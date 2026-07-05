@@ -93,10 +93,10 @@ cost/capability ladder (Haiku for mechanical work, Sonnet for judgment):
 | Step | Who | Model | Why |
 |------|-----|-------|-----|
 | Write failing unit tests (Phases 1–2) | orchestrator | — | tests encode the spec; too important to delegate |
-| Implement `tui_theme.py` + `tui_wordmark.py` to green | worker agent | **Haiku 4.5** | well-specified, mechanical, cheap; tests already define done |
+| Implement `tui_theme.py` + `tui_wordmark.py` to green | worker agents, parallel | **Haiku 4.5** | well-specified, mechanical, cheap; tests already define done |
 | Wordmark glyph pixel maps | worker agent | **Haiku 4.5** | bounded artistic-mechanical task with a visual check after |
-| Textual layout rebuild (Phase 3) | orchestrator | — | layout/UX judgment, cross-file integration |
-| Code review pass | `code-reviewer` + `python-reviewer` agents | **Sonnet** | independent eyes on quality + Python idiom, per repo rules |
+| Textual layout rebuild (Phase 3) | orchestrator | — | layout/UX judgment, cross-file integration; NOT delegated to Haiku (Textual CSS quirks + mock fidelity need iteration against a live render) |
+| Code review pass | `code-reviewer` + `python-reviewer` agents | **Opus** | strongest independent review on the user-facing surface; orchestrator verifies findings and takes over anything flagged as difficult |
 | Build/regression triage if suite breaks | `build-error-resolver` agent | Sonnet | minimal-diff fixes only |
 
 Flow: tests (orchestrator) → parallel Haiku workers to green → orchestrator

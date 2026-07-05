@@ -452,3 +452,27 @@ session, roughly in order:
    `install.sh`-based quick start, no more `/opt/6ix9ine` or `pip3 install psutil textual`
    leftovers). `README-WIP.md` is a draft kept locally by request — gitignored, not committed,
    not deleted.
+
+---
+
+## Status view rebuild (2026-07-04, branch `feat/status-view`)
+
+The `t69` dashboard was rebuilt to the final spec
+(`dashboard-status-view/status-view-spec.md`) per the implementation plan
+(`dashboard-status-view/implementation-plan.md`):
+
+- New pure-logic modules: `bin/tui_theme.py` (palette, held-time tiers,
+  stable session colors, agent emoji) and `bin/tui_wordmark.py` (half-block
+  pixel wordmark, collapse rule) — no Textual imports, fully unit-tested.
+- `bin/tui.py` rebuilt: wordmark header + status lines, chip topline,
+  dense monitor (sessions + timed holds, dim `—` pid), split inspector,
+  quiet module dash, dark scrollbars, command palette disabled. All prior
+  behavior kept (`--kill`, ignore filter, 2s refresh, k/x/a/r/q keys).
+- Built via Haiku worker agents against orchestrator-written failing tests;
+  Opus review pass. Test suite grew 186 → 246 (all green). Human-simulation
+  suite unchanged: 6 pass + the known thermal failure (bug #4).
+- First-ever visual renders captured via `App.export_screenshot()` (pilot
+  harness) — full, collapsed (<30 rows), and daemon-down states verified.
+- **Still pending**: the live manual checklist in the implementation plan
+  (real terminal, real agent sessions, Terminal.app + iTerm2), and re-running
+  `install.sh` so the runtime copy picks up the new TUI.
