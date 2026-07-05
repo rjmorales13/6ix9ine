@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SixNineApp TUI Redesign Options</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #111a31;
+      --panel-2: #16213f;
+      --text: #e7ecff;
+      --muted: #93a0c7;
+      --line: rgba(255,255,255,.08);
+      --accent: #7c9cff;
+      --good: #4ade80;
+      --warn: #f59e0b;
+      --bad: #fb7185;
+      --shadow: 0 16px 40px rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(124,156,255,.14), transparent 35%),
+        radial-gradient(circle at top right, rgba(74,222,128,.10), transparent 28%),
+        var(--bg);
+      color: var(--text);
+      font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .wrap { padding: 24px; }
+    .title {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 20px;
+    }
+    h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+    .subtitle { color: var(--muted); margin: 4px 0 0; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+    .option {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(12,18,38,.86);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 640px;
+    }
+    .option header {
+      padding: 16px 18px 14px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,.04), transparent);
+    }
+    .eyebrow { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .14em; }
+    .option h2 { margin: 6px 0 6px; font-size: 20px; }
+    .desc { margin: 0; color: var(--muted); }
+    .screen { padding: 16px; display: grid; gap: 12px; }
+    .pillrow { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill {
+      padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,.03);
+      font-size: 12px;
+    }
+    .kpis { display: grid; gap: 10px; }
+    .kpis.three { grid-template-columns: repeat(3, 1fr); }
+    .kpis.four { grid-template-columns: repeat(4, 1fr); }
+    .card, .panel {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+    }
+    .card { padding: 12px; }
+    .big { font-size: 24px; font-weight: 700; margin-top: 6px; }
+    .label { color: var(--muted); font-size: 12px; }
+    .spark {
+      height: 42px; margin-top: 8px; border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(124,156,255,.95), rgba(74,222,128,.92));
+      clip-path: polygon(0 65%, 8% 58%, 14% 74%, 22% 40%, 33% 48%, 41% 22%, 51% 37%, 60% 18%, 70% 33%, 80% 10%, 90% 24%, 100% 16%, 100% 100%, 0 100%);
+      opacity: .9;
+    }
+    .panel { padding: 12px; }
+    .table {
+      display: grid; gap: 8px;
+    }
+    .row {
+      display: grid;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.025);
+      border: 1px solid rgba(255,255,255,.05);
+    }
+    .row.cols4 { grid-template-columns: 1.3fr .8fr 1.8fr 1fr; }
+    .row.cols5 { grid-template-columns: 1.1fr .7fr .8fr .7fr .8fr; }
+    .muted { color: var(--muted); }
+    .good { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    .sidebar-layout {
+      display: grid;
+      grid-template-columns: 1.05fr 1.4fr;
+      gap: 12px;
+    }
+    .list { display: grid; gap: 8px; }
+    .listitem {
+      display: flex; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; border-radius: 12px;
+      background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05);
+    }
+    .listitem.active { background: rgba(124,156,255,.16); border-color: rgba(124,156,255,.25); }
+    .details { display: grid; gap: 10px; }
+    .detailbox {
+      padding: 12px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.03);
+    }
+    .detailbox h3 { margin: 0 0 8px; font-size: 14px; }
+    .actionbar {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 6px;
+    }
+    .key { padding: 5px 8px; border-radius: 8px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: var(--text); }
+    .footer-note { color: var(--muted); font-size: 12px; margin-top: 12px; }
+    .accent-a { color: #8fb2ff; }
+    .accent-b { color: #b4f7c8; }
+    .accent-c { color: #f8cb6d; }
+    .bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
+    .bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--good)); }
+    @media (max-width: 1200px) { .grid { grid-template-columns: 1fr; } .option { min-height: unset; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">
+      <div>
+        <h1>SixNineApp TUI redesign options</h1>
+        <p class="subtitle">Same data, three visual directions. Pick the feeling you want.</p>
+      </div>
+      <div class="pillrow">
+        <div class="pill">Sleep blocked: <span class="good">true</span></div>
+        <div class="pill">Active sessions: 3</div>
+        <div class="pill">Aux workloads: 1</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="option">
+        <header>
+          <div class="eyebrow">Option A</div>
+          <h2>Control Room</h2>
+          <p class="desc">Big signals, strong contrast, more command-center energy.</p>
+        </header>
+        <div class="screen">
+          <div class="kpis three">
+            <div class="card"><div class="label">Sleep state</div><div class="big good">BLOCKED</div><div class="bar"><span style="width:84%"></span></div></div>
+            <div class="card"><div class="label">Sessions</div><div class="big">03</div><div class="spark"></div></div>
+            <div class="card"><div class="label">Risk</div><div class="big warn">MED</div><div class="bar"><span style="width:54%"></span></div></div>
+          </div>
+          <div class="panel">
+            <div class="label" style="margin-bottom:8px;">Active sessions</div>
+            <div class="table">
+              <div class="row cols4"><strong>claude</strong><span class="good">running</span><span class="muted">building docs</span><span>12m</span></div>
+              <div class="row cols4"><strong>opencode</strong><span class="good">running</span><span class="muted">refactor</span><span>08m</span></div>
+              <div class="row cols4"><strong>codex</strong><span class="warn">idle</span><span class="muted">awaiting input</span><span>02m</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="label" style="margin-bottom:8px;">Auxiliary workloads</div>
+            <div class="row cols5"><strong>ollama</strong><span>1680</span><span class="good">running</span><span>0.0%</span><span>0.01 GB</span></div>
+          </div>
+          <div class="actionbar">
+            <span class="key">q quit</span><span class="key">k release</span><span class="key">x purge</span><span class="key">a ignore</span><span class="key">r restore</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="option">
+        <header>
+          <div class="eyebrow">Option B</div>
+          <h2>Calm Status Board</h2>
+          <p class="desc">Cleaner hierarchy, softer energy, more glanceable and less noisy.</p>
+        </header>
+        <div class="screen">
+          <div class="kpis four">
+            <div class="card"><div class="label">Mode</div><div class="big">Awake</div></div>
+            <div class="card"><div class="label">Blocked</div><div class="big good">Yes</div></div>
+            <div class="card"><div class="label">Sessions</div><div class="big">3</div></div>
+            <div class="card"><div class="label">Last change</div><div class="big">1m</div></div>
+          </div>
+          <div class="sidebar-layout">
+            <div class="panel">
+              <div class="label" style="margin-bottom:8px;">Sessions</div>
+              <div class="list">
+                <div class="listitem active"><span>claude</span><span class="good">12m</span></div>
+                <div class="listitem"><span>opencode</span><span class="good">08m</span></div>
+                <div class="listitem"><span>codex</span><span class="warn">02m</span></div>
+              </div>
+            </div>
+            <div class="details">
+              <div class="detailbox">
+                <h3>Selected session</h3>
+                <div class="muted">Agent: claude</div>
+                <div class="muted">Reason: building docs</div>
+                <div class="muted">Held for: 12m 44s</div>
+              </div>
+              <div class="detailbox">
+                <h3>Trend</h3>
+                <div class="spark"></div>
+              </div>
+              <div class="detailbox">
+                <h3>Action hint</h3>
+                <div class="muted">Use the selected row, then press `k` to release.</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="label" style="margin-bottom:8px;">Auxiliary</div>
+            <div class="row cols5"><strong>ollama</strong><span>1680</span><span>running</span><span>0.0%</span><span>0.01 GB</span></div>
+          </div>
+          <div class="actionbar">
+            <span class="key">q quit</span><span class="key">k release</span><span class="key">x purge</span><span class="key">a hide</span><span class="key">r restore</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="option">
+        <header>
+          <div class="eyebrow">Option C</div>
+          <h2>Terminal Cockpit</h2>
+          <p class="desc">Compact, sharp, and tooling-forward. Feels like a power user console.</p>
+        </header>
+        <div class="screen">
+          <div class="kpis three">
+            <div class="card"><div class="label">State</div><div class="big">LIVE</div></div>
+            <div class="card"><div class="label">Sessions</div><div class="big">03</div></div>
+            <div class="card"><div class="label">Alerts</div><div class="big bad">01</div></div>
+          </div>
+          <div class="panel">
+            <div class="row cols4"><strong>&gt; claude</strong><span class="accent-a">active</span><span class="muted">building</span><span>12m</span></div>
+            <div class="row cols4"><strong>&gt; opencode</strong><span class="accent-b">active</span><span class="muted">refactor</span><span>08m</span></div>
+            <div class="row cols4"><strong>&gt; codex</strong><span class="accent-c">idle</span><span class="muted">waiting</span><span>02m</span></div>
+          </div>
+          <div class="panel">
+            <div class="label" style="margin-bottom:8px;">Event stream</div>
+            <div class="list">
+              <div class="listitem"><span>sleep blocked</span><span class="good">on</span></div>
+              <div class="listitem"><span>new hold acquired</span><span class="muted">32s ago</span></div>
+              <div class="listitem"><span>ollama detected</span><span class="muted">background</span></div>
+            </div>
+          </div>
+          <div class="footer-note">Dense, fast, and intentionally more technical looking.</div>
+          <div class="actionbar">
+            <span class="key">q</span><span class="key">k</span><span class="key">x</span><span class="key">a</span><span class="key">r</span><span class="key">/ search</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>6ix9ine Terminal Mock</title>
+  <style>
+    :root {
+      --bg: #040404;
+      --panel: #050505;
+      --line: #6b6650;
+      --text: #d7cfaa;
+      --muted: #7d765c;
+      --green: #9dcc42;
+      --lime: #c9df69;
+      --olive: #a8b05a;
+      --cyan: #5fd7d7;
+      --amber: #e0a85b;
+      --orange: #e58b42;
+      --red: #d9534f;
+      --hotred: #ff3b30;
+      --gold: #d7c46a;
+      --teal: #4cb7a1;
+      --white: #f1ead2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.25 Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    .screen {
+      min-height: 100vh;
+      padding: 14px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+      border-bottom: 1px solid rgba(107,102,80,.35);
+    }
+    .top {
+      display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+    }
+    .title { color: var(--white); font-size: 16px; }
+    .sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .meta { color: var(--muted); font-size: 11px; text-align: right; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; min-height: 0; }
+    .pane {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .panehead {
+      border-bottom: 1px solid var(--line);
+      padding: 6px 8px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      text-transform: lowercase;
+    }
+    .panecontent { padding: 8px; display: grid; gap: 8px; min-height: 0; }
+    .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .kpi {
+      border: 1px solid var(--line);
+      padding: 8px;
+      background: #070707;
+      min-height: 66px;
+    }
+    .kpi .k { color: var(--muted); font-size: 11px; }
+    .kpi .v { margin-top: 4px; font-size: 20px; }
+    .table { border: 1px solid var(--line); background: #060606; }
+    .table .thead,
+    .table .row {
+      display: grid; gap: 8px; padding: 5px 6px; align-items: center;
+      border-bottom: 1px solid rgba(107,102,80,.45);
+    }
+    .table .thead { color: var(--muted); background: #070707; }
+    .table .row:last-child { border-bottom: 0; }
+    .box { border: 1px solid var(--line); background: #060606; padding: 6px; }
+    .small { font-size: 11px; }
+    .muted { color: var(--muted); }
+    .good { color: var(--green); }
+    .lime { color: var(--lime); }
+    .olive { color: var(--olive); }
+    .cyan { color: var(--cyan); }
+    .amber { color: var(--amber); }
+    .orange { color: var(--orange); }
+    .red { color: var(--red); }
+    .hotred { color: var(--hotred); }
+    .white { color: var(--white); }
+    .tone1 { color: var(--cyan); }
+    .tone2 { color: var(--amber); }
+    .tone3 { color: var(--olive); }
+    .selected { background: rgba(157,204,66,.10); }
+    .cols6 { grid-template-columns: 1.05fr .6fr 1.15fr .7fr 1.9fr .7fr; }
+    .cols5 { grid-template-columns: 1fr .7fr .8fr .7fr .9fr; }
+    .rows { display: grid; gap: 6px; }
+    .row { display: grid; gap: 8px; padding: 5px 6px; align-items: center; }
+    .held-under5 { color: var(--green); }
+    .held-under30 { color: var(--orange); }
+    .held-under45 { color: var(--red); }
+    .held-over45 { color: var(--hotred); }
+    .sleep-icon { color: var(--cyan); }
+    .sleep-icon.alt { color: var(--amber); }
+    .footer {
+      margin-top: auto;
+      border-top: 1px solid var(--line);
+      padding: 6px 8px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .key { color: var(--white); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .rail { display: grid; gap: 6px; }
+    .railrow { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dotted rgba(107,102,80,.45); padding-bottom: 3px; }
+    .railrow:last-child { border-bottom: 0; padding-bottom: 0; }
+    .chipline { display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
+    .chip { padding: 3px 6px; border: 1px solid var(--line); background: #060606; }
+    .spark {
+      height: 50px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background:
+        repeating-linear-gradient(
+          to right,
+          rgba(157, 204, 66, 0.0) 0,
+          rgba(157, 204, 66, 0.0) 5px,
+          rgba(157, 204, 66, 0.72) 5px,
+          rgba(157, 204, 66, 0.72) 7px
+        );
+      opacity: .85;
+    }
+    .spark.alt {
+      background:
+        repeating-linear-gradient(
+          to right,
+          rgba(95,215,215,0.0) 0,
+          rgba(95,215,215,0.0) 6px,
+          rgba(95,215,215,.74) 6px,
+          rgba(95,215,215,.74) 8px
+        ),
+        linear-gradient(180deg, rgba(224,168,91,.18), rgba(76,183,161,.10));
+      opacity: .85;
+    }
+    .bar { height: 7px; margin-top: 6px; border-radius: 999px; background: rgba(255,255,255,.05); overflow: hidden; }
+    .bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), var(--cyan), var(--gold)); }
+    @media (max-width: 1200px) { .grid { grid-template-columns: 1fr; } .screen { min-height: 0; } .pane { min-height: 0; } }
+  </style>
+</head>
+<body>
+  <section class="screen">
+    <div class="top">
+      <div>
+        <div class="title">SixNineApp</div>
+        <div class="sub">status view</div>
+      </div>
+      <div class="meta">
+        sleep_blocked=<span class="good">true</span>  agent_sessions=<span class="cyan">03</span>  aux_bg=<span class="olive">01</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="pane">
+        <div class="panehead"><span>dense monitor</span><span class="muted">blocked</span></div>
+        <div class="panecontent">
+          <div class="kpis">
+            <div class="kpi"><div class="k">Sleep</div><div class="v hotred">BLOCKED</div></div>
+            <div class="kpi"><div class="k">Agent Sessions</div><div class="v">03</div></div>
+            <div class="kpi"><div class="k">Age</div><div class="v orange">02m</div></div>
+          </div>
+
+          <div class="box small">
+            <div class="muted">active sessions</div>
+            <div class="table" style="margin-top:6px;">
+              <div class="thead cols6"><span>session</span><span>pid</span><span>uuid</span><span>state</span><span>reason</span><span>held</span></div>
+              <div class="row cols6 selected"><span class="tone1">🤖 claude</span><span>8121</span><span class="muted">9f2c…a11</span><span class="good">running</span><span>building docs</span><span class="held-under30">12m</span></div>
+              <div class="row cols6"><span class="tone2">🧰 opencode</span><span>4410</span><span class="muted">2b7d…4f8</span><span class="good">running</span><span>refactor</span><span class="held-under5">04m</span></div>
+              <div class="row cols6"><span class="tone3">⌘ codex</span><span>9933</span><span class="muted">c1aa…77d</span><span class="orange">idle</span><span>awaiting input</span><span class="held-under45">37m</span></div>
+            </div>
+          </div>
+
+          <div class="box small">
+            <div class="muted">auxiliary background processes running</div>
+            <div class="table" style="margin-top:6px;">
+              <div class="thead cols5"><span>process</span><span>pid</span><span>status</span><span>cpu</span><span>memory</span></div>
+              <div class="row cols5"><span class="olive">ollama</span><span>1680</span><span class="good">running</span><span>0.0%</span><span>0.01 GB</span></div>
+            </div>
+          </div>
+
+          <div class="footer"><span class="key">q quit</span><span class="key">k kill</span><span class="key">x purge</span><span class="key">a ignore</span><span class="key">r restore</span><span class="key">/ filter</span></div>
+        </div>
+      </section>
+
+      <section class="pane">
+        <div class="panehead"><span>split inspector</span><span class="muted">sleep available</span></div>
+        <div class="panecontent">
+          <div class="chipline">
+            <span class="chip">😴 sleep available</span>
+            <span class="chip">💤 idle ready</span>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi"><div class="k">Sleep</div><div class="v sleep-icon">😴 AVAILABLE</div></div>
+            <div class="kpi"><div class="k">Agent Sessions</div><div class="v">03</div></div>
+            <div class="kpi"><div class="k">Age</div><div class="v orange">02m</div></div>
+          </div>
+
+          <div class="split">
+            <div class="box small">
+              <div class="muted">active sessions</div>
+              <div class="rail" style="margin-top:6px;">
+                <div class="railrow"><span class="tone1">🤖 claude</span><span class="held-under30">12m</span></div>
+                <div class="railrow"><span class="tone2">🧰 opencode</span><span class="held-under5">04m</span></div>
+                <div class="railrow"><span class="tone3">⌘ codex</span><span class="held-under45">37m</span></div>
+              </div>
+            </div>
+            <div class="box small">
+              <div class="muted">selected session</div>
+              <div style="margin-top:6px;">
+                <div>agent: <span class="tone1">🤖 claude</span></div>
+                <div>reason: building docs</div>
+                <div>held: <span class="held-under30">12m 44s</span></div>
+              </div>
+              <div style="margin-top:10px;" class="muted">sleep state</div>
+              <div class="v sleep-icon" style="font-size:20px; margin-top:2px;">😴 AVAILABLE</div>
+              <div class="spark alt" style="margin-top:8px;"></div>
+            </div>
+          </div>
+
+          <div class="box small">
+            <div class="muted">auxiliary background processes running</div>
+            <div class="row cols5" style="margin-top:6px;"><span class="olive">ollama</span><span>1680</span><span class="good">running</span><span>0.0%</span><span>0.01 GB</span></div>
+          </div>
+
+          <div class="footer"><span class="key">q quit</span><span class="key">k kill</span><span class="key">x purge</span><span class="key">a ignore</span><span class="key">r restore</span><span class="key">/ filter</span></div>
+        </div>
+      </section>
+
+      <section class="pane">
+        <div class="panehead"><span>module dash</span><span class="muted">sleep available</span></div>
+        <div class="panecontent">
+          <div class="chipline">
+            <span class="chip">😴 available</span>
+            <span class="chip">💤 ready</span>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi"><div class="k">Sleep</div><div class="v sleep-icon alt">💤 AVAILABLE</div></div>
+            <div class="kpi"><div class="k">Agent Sessions</div><div class="v">03</div></div>
+            <div class="kpi"><div class="k">Age</div><div class="v orange">02m</div></div>
+          </div>
+
+          <div class="box small">
+            <div class="muted">signals</div>
+            <div class="split" style="margin-top:6px;">
+              <div class="box">
+                <div class="small muted">sleep</div>
+                <div class="v sleep-icon alt" style="font-size:20px;">💤 AVAILABLE</div>
+                <div class="bar"><span style="width:88%"></span></div>
+              </div>
+              <div class="box">
+                <div class="small muted">last added</div>
+                <div class="v orange" style="font-size:20px;">02m</div>
+                <div class="spark alt" style="height:38px; margin-top:6px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="box small">
+            <div class="muted">active sessions</div>
+            <div class="table" style="margin-top:6px;">
+              <div class="thead cols6"><span>session</span><span>pid</span><span>uuid</span><span>state</span><span>reason</span><span>held</span></div>
+              <div class="row cols6"><span class="tone1">🤖 claude</span><span>8121</span><span class="muted">9f2c…a11</span><span class="good">running</span><span>building docs</span><span class="held-under30">12m</span></div>
+              <div class="row cols6"><span class="tone2">🧰 opencode</span><span>4410</span><span class="muted">2b7d…4f8</span><span class="good">running</span><span>refactor</span><span class="held-under5">04m</span></div>
+              <div class="row cols6"><span class="tone3">⌘ codex</span><span>9933</span><span class="muted">c1aa…77d</span><span class="orange">idle</span><span>waiting</span><span class="held-under45">37m</span></div>
+            </div>
+          </div>
+
+          <div class="box small">
+            <div class="muted">auxiliary background processes running</div>
+            <div class="row cols5" style="margin-top:6px;"><span class="olive">ollama</span><span>1680</span><span class="good">running</span><span>0.0%</span><span>0.01 GB</span></div>
+          </div>
+
+          <div class="footer"><span class="key">q quit</span><span class="key">k kill</span><span class="key">x purge</span><span class="key">a ignore</span><span class="key">r restore</span><span class="key">/ filter</span></div>
+        </div>
+      </section>
+    </div>
+  </section>
+</body>
+</html>

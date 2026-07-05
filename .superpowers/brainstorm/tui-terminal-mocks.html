@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>6ix9ine Terminal TUI Mockups</title>
+  <style>
+    :root {
+      --bg: #061018;
+      --panel: #0c1621;
+      --panel2: #101d2c;
+      --line: rgba(255,255,255,.09);
+      --text: #e7eef8;
+      --muted: #8ea0b5;
+      --good: #6ee7a0;
+      --warn: #f5c66a;
+      --bad: #ff7e93;
+      --accent: #86a9ff;
+      --shadow: 0 14px 42px rgba(0,0,0,.34);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(134,169,255,.14), transparent 24%),
+        radial-gradient(circle at 85% 5%, rgba(110,231,160,.10), transparent 22%),
+        var(--bg);
+      color: var(--text);
+      font: 13px/1.35 Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    .wrap { padding: 18px; }
+    .top {
+      display: flex; justify-content: space-between; gap: 16px; align-items: baseline; margin-bottom: 16px;
+    }
+    h1 { margin: 0; font-size: 18px; }
+    .sub { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .meta { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .chip { padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.03); color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .mock {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 620px;
+    }
+    .head {
+      padding: 12px 13px 11px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.02);
+    }
+    .label { color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-size: 10px; }
+    .title { margin-top: 5px; font-size: 16px; }
+    .desc { margin-top: 5px; color: var(--muted); font-size: 12px; }
+    .screen { padding: 12px; display: grid; gap: 10px; }
+    .box {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255,255,255,.02);
+      padding: 10px;
+    }
+    .sectionhead {
+      display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+      margin-bottom: 8px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .11em;
+    }
+    .mono { white-space: pre; font-size: 12px; line-height: 1.15; }
+    .good { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    .accent { color: var(--accent); }
+    .dim { color: var(--muted); }
+    .rows { display: grid; gap: 6px; }
+    .row { display: grid; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05); }
+    .row.cols4 { grid-template-columns: 1.1fr .8fr 1.7fr .8fr; }
+    .row.cols5 { grid-template-columns: 1.1fr .8fr .8fr .8fr .8fr; }
+    .row.cols2 { grid-template-columns: 1.3fr .7fr; }
+    .footer { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+    .key { padding: 4px 7px; border-radius: 6px; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+    .kpis { display: grid; gap: 8px; }
+    .three { grid-template-columns: repeat(3, 1fr); }
+    .four { grid-template-columns: repeat(4, 1fr); }
+    .metric { padding: 8px; border-radius: 8px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.05); }
+    .metric .v { margin-top: 4px; font-size: 20px; font-weight: 700; }
+    .bar { height: 7px; margin-top: 6px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
+    .bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--good)); }
+    .split { display: grid; grid-template-columns: 1.1fr .9fr; gap: 10px; }
+    .list { display: grid; gap: 7px; }
+    .item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05); }
+    .item.active { background: rgba(134,169,255,.14); border-color: rgba(134,169,255,.22); }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tab { padding: 4px 8px; border-radius: 7px; background: rgba(255,255,255,.03); border: 1px solid var(--line); color: var(--muted); }
+    .tab.active { color: var(--text); background: rgba(134,169,255,.14); border-color: rgba(134,169,255,.22); }
+    .spark {
+      height: 44px; border-radius: 8px; margin-top: 8px;
+      background: linear-gradient(135deg, rgba(134,169,255,.9), rgba(110,231,160,.85));
+      clip-path: polygon(0 76%, 10% 68%, 18% 86%, 28% 50%, 39% 60%, 50% 25%, 60% 42%, 70% 18%, 80% 33%, 90% 12%, 100% 22%, 100% 100%, 0 100%);
+    }
+    @media (max-width: 1180px) { .grid { grid-template-columns: 1fr; } .mock { min-height: unset; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>6ix9ine terminal-native mockups</h1>
+        <div class="sub">Three options closer to what Textual can actually do. No web cards, no fake chrome.</div>
+      </div>
+      <div class="meta">
+        <div class="chip">sleep_blocked=<span class="good">True</span></div>
+        <div class="chip">agent_sessions=3</div>
+        <div class="chip">aux_background=1</div>
+        <div class="chip">status=ACTIVE</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="mock">
+        <div class="head">
+          <div class="label">Option 1</div>
+          <div class="title">Dense Monitor</div>
+          <div class="desc">Closest to `btop` / `bottom`: one glance gets the state, everything else stays compact.</div>
+        </div>
+        <div class="screen">
+          <div class="kpis three">
+            <div class="metric"><div class="dim">Sleep</div><div class="v good">BLOCKED</div><div class="bar"><span style="width:88%"></span></div></div>
+            <div class="metric"><div class="dim">Agent Sessions</div><div class="v">03</div><div class="spark"></div></div>
+            <div class="metric"><div class="dim">Last Added</div><div class="v warn">02m</div><div class="bar"><span style="width:32%"></span></div></div>
+          </div>
+
+          <div class="box">
+            <div class="sectionhead"><span>active sessions</span><span>sorted by hold time</span></div>
+            <div class="rows">
+              <div class="row cols4"><strong>claude</strong><span class="good">running</span><span class="dim">building docs</span><span>12m</span></div>
+              <div class="row cols4"><strong>opencode</strong><span class="good">running</span><span class="dim">refactor</span><span>08m</span></div>
+              <div class="row cols4"><strong>codex</strong><span class="warn">idle</span><span class="dim">awaiting input</span><span>02m</span></div>
+            </div>
+          </div>
+
+          <div class="box">
+            <div class="sectionhead"><span>auxiliary background processes running</span><span>quiet / secondary</span></div>
+            <div class="row cols5"><strong>ollama</strong><span>1680</span><span class="good">running</span><span>0.0%</span><span>0.01 GB</span></div>
+          </div>
+
+          <div class="footer">
+            <span class="key">q quit</span><span class="key">k release</span><span class="key">x purge</span><span class="key">a ignore</span><span class="key">r restore</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="mock">
+        <div class="head">
+          <div class="label">Option 2</div>
+          <div class="title">Split Inspector</div>
+          <div class="desc">Closest to `k9s` / `gh-dash`: list on one side, detail on the other, with a pinned status strip.</div>
+        </div>
+        <div class="screen">
+          <div class="tabs">
+            <span class="tab active">sessions</span><span class="tab">aux</span><span class="tab">events</span><span class="tab">help</span>
+          </div>
+
+          <div class="kpis four">
+            <div class="metric"><div class="dim">Mode</div><div class="v">ACTIVE</div></div>
+            <div class="metric"><div class="dim">Sleep</div><div class="v good">BLOCKED</div></div>
+            <div class="metric"><div class="dim">Age</div><div class="v">02m</div></div>
+            <div class="metric"><div class="dim">Events</div><div class="v warn">1</div></div>
+          </div>
+
+          <div class="split">
+            <div class="box">
+                <div class="sectionhead"><span>session list</span><span>cursor on claude</span></div>
+              <div class="list">
+                <div class="item active"><span>claude</span><span class="good">12m</span></div>
+                <div class="item"><span>opencode</span><span class="good">08m</span></div>
+                <div class="item"><span>codex</span><span class="warn">02m</span></div>
+              </div>
+            </div>
+            <div class="box">
+              <div class="sectionhead"><span>details</span><span>selected item</span></div>
+              <div class="rows">
+                <div class="row cols2"><strong>agent</strong><span>claude</span></div>
+                <div class="row cols2"><strong>reason</strong><span>building docs</span></div>
+                <div class="row cols2"><strong>held</strong><span>12m 44s</span></div>
+              </div>
+              <div class="box" style="margin-top:10px;">
+                <div class="sectionhead"><span>sleep state</span><span>hero emphasis</span></div>
+                <div class="v good" style="font-size:22px; font-weight:700;">BLOCKED</div>
+                <div class="spark"></div>
+              </div>
+              <div class="box" style="margin-top:10px;">
+                <div class="sectionhead"><span>auxiliary background processes running</span><span>low emphasis</span></div>
+                <div class="row cols2"><strong>ollama</strong><span class="good">running</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="footer">
+            <span class="key">q</span><span class="key">k</span><span class="key">x</span><span class="key">a</span><span class="key">r</span><span class="key">tab switch</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="mock">
+        <div class="head">
+          <div class="label">Option 3</div>
+          <div class="title">Status Rail</div>
+          <div class="desc">Closest to `WTF` / `sysz`: a vertical rail with compact blocks and strong command surface.</div>
+        </div>
+        <div class="screen">
+          <div class="kpis three">
+            <div class="metric"><div class="dim">Sleep</div><div class="v good">BLOCKED</div></div>
+            <div class="metric"><div class="dim">Agent Sessions</div><div class="v">03</div></div>
+            <div class="metric"><div class="dim">Age</div><div class="v">02m</div></div>
+          </div>
+
+          <div class="box" style="display:grid; grid-template-columns: .9fr 1.1fr; gap: 10px;">
+            <div class="box">
+              <div class="sectionhead"><span>signals</span><span>rail</span></div>
+              <div class="rows">
+                <div class="row cols2"><strong>sleep</strong><span class="good">on</span></div>
+                <div class="row cols2"><strong>status</strong><span>active</span></div>
+                <div class="row cols2"><strong>health</strong><span class="warn">watch</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="sectionhead"><span>sessions</span><span>compact rows</span></div>
+              <div class="rows">
+                <div class="row cols4"><strong>claude</strong><span class="good">running</span><span class="dim">build docs</span><span>12m</span></div>
+                <div class="row cols4"><strong>opencode</strong><span class="good">running</span><span class="dim">refactor</span><span>08m</span></div>
+                <div class="row cols4"><strong>codex</strong><span class="warn">idle</span><span class="dim">waiting</span><span>02m</span></div>
+              </div>
+
+              <div class="box" style="margin-top:10px;">
+                <div class="sectionhead"><span>auxiliary background processes running</span><span>background</span></div>
+                <div class="row cols5"><strong>ollama</strong><span>1680</span><span class="good">running</span><span>0.0%</span><span>0.01 GB</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="footer">
+            <span class="key">q quit</span><span class="key">k kill</span><span class="key">x purge</span><span class="key">a ignore</span><span class="key">r restore</span><span class="key">/ filter</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>
