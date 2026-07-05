@@ -92,7 +92,7 @@ The dashboard is the main place to monitor what is happening right now.
 - Active sessions are shown first
 - Other processes, such as Ollama, are shown alongside them
 - The view is intentionally minimal so status is easy to read at a glance
-- Final TUI direction: full-page terminal `status view` with row-specific color, distinct session identities, and held-time thresholds
+- Full-page terminal `status view`: ghost-rainbow wordmark header, per-row session identity colors, held-time color thresholds (green → orange → red → 🔥), timed holds, a live inspector pane, and a quiet auxiliary-process dash
 
 Think of it as the live control surface: one place to confirm what is awake, what is holding sleep open, and what is just running in the background.
 
