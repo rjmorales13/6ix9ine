@@ -42,12 +42,11 @@ environment that has no real daemon or helper to talk to.
   plugin file actually exists on disk.
 - `test_lid_state.py` — **should PASS**. Verifies real `ioreg`-based lid-state polling returns a
   real value.
-- `test_thermal_reading.py` — **should currently FAIL**. This is bug #4, not yet fixed:
-  `thermal_monitor.py` calls `powermetrics --samplers smc`, which doesn't exist on Apple Silicon
-  (`powermetrics: unrecognized sampler: smc`), so the daemon's `thermal.current_temp` never gets
-  populated and thermal cutout protection cannot fire on this hardware. **A failure here is the
-  suite correctly doing its job, not a broken test** — don't "fix" it by loosening the assertion;
-  fix the actual thermal reading instead.
+- `test_thermal_reading.py` — **should PASS** on Apple Silicon and Intel. Previously
+  expected to fail (bug #4): `thermal_monitor.py` now tries `--samplers smc` (Intel) first,
+  falls back to `--samplers thermal` (Apple Silicon), and maps thermal pressure level to a
+  synthetic temperature. The human-simulation test confirmed the fix live on this machine:
+  the helper now returns `current_temp: 40.0°C` (from "Nominal" pressure).
 
 ## How this suite has been run
 
