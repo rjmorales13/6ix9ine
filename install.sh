@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
-# One-command installer for 6ix9ine. Run from a checkout of the repo:
+# One-command installer for 6ix9ine.
+#
 #   git clone https://github.com/rjmorales13/6ix9ine.git && cd 6ix9ine && ./install.sh
 #
-# This does everything: venv, deps, the root helper (will prompt for your
-# password once), agent hooks, and starts the daemon. Safe to re-run --
-# every step is idempotent and skips anything already done.
+# Safe to re-run — every step is idempotent.
 set -euo pipefail
+
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+DIM='\033[2m'
+
+step()  { printf " ${CYAN}⚙${NC}  ${BOLD}$1${NC}\n"; }
+ok()    { printf " ${GREEN}✓${NC}  $1\n"; }
+warn()  { printf " ${YELLOW}⚠${NC}  $1\n"; }
+fail()  { printf " ${RED}✗${NC}  ${BOLD}$1${NC}\n" >&2; exit 1; }
+detail(){ printf "     ${DIM}$1${NC}\n"; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_SUPPORT_DIR="$HOME/Library/Application Support/6ix9ine"
@@ -14,10 +27,20 @@ BIN_DIR="$HOME/.local/bin"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 DAEMON_BUNDLE_ID="com.rjmorales.6ix9ine.daemon"
 DAEMON_PLIST_DST="$LAUNCH_AGENTS_DIR/${DAEMON_BUNDLE_ID}.plist"
-
-# daemon.py's own sibling-module imports (see bin/daemon.py) -- kept in sync
-# by hand since there's no packaging step yet to derive this list from.
 RUNTIME_MODULES=(daemon.py daemon_commands.py ipc.py lid_monitor.py shared.py thermal_monitor.py idle_tracker.py session_registry.py)
+
+# ── header ──────────────────────────────────────────────────────────────
+
+cat <<EOF
+
+  ${BOLD}6ix9ine${NC} ${DIM}— the snitch that rats on sleep${NC}
+  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+EOF
+
+# ── 1. Python ──────────────────────────────────────────────────────────
+
+step "Finding Python 3.13+"
 
 find_python313() {
   for candidate in python3.13 /opt/homebrew/bin/python3.13 /usr/local/bin/python3.13; do
@@ -29,34 +52,47 @@ find_python313() {
   return 1
 }
 
-echo "==> Checking for Python 3.13+"
-if ! PYTHON313="$(find_python313)"; then
-  echo "error: Python 3.13+ not found on PATH." >&2
-  echo "       Install it first, e.g.: brew install python@3.13" >&2
-  exit 1
-fi
-echo "    using $PYTHON313 ($("$PYTHON313" --version 2>&1))"
+PYTHON313="$(find_python313)" || fail "Python 3.13+ not found.\n     Install it first: ${BOLD}brew install python@3.13${NC}"
+PYVER="$("$PYTHON313" --version 2>&1)"
+detail "$PYVER · $PYTHON313"
+ok "$PYVER"
 
-echo "==> Creating runtime directory at $APP_SUPPORT_DIR"
+# ── 2. Runtime directory ───────────────────────────────────────────────
+
+step "Preparing runtime directory"
 mkdir -p "$APP_SUPPORT_DIR"
+ok "$APP_SUPPORT_DIR"
 
-echo "==> Creating virtualenv at $VENV_DIR"
+# ── 3. Virtualenv ──────────────────────────────────────────────────────
+
+step "Creating virtualenv"
 if [ ! -x "$VENV_DIR/bin/python3" ]; then
   "$PYTHON313" -m venv "$VENV_DIR"
+  ok "virtualenv created at $VENV_DIR"
 else
-  echo "    already exists, reusing"
+  detail "already exists, reusing"
+  ok "virtualenv ready"
 fi
 
-echo "==> Installing Python dependencies into the venv"
+# ── 4. Dependencies ────────────────────────────────────────────────────
+
+step "Installing Python dependencies"
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip
 "$VENV_DIR/bin/pip" install --quiet -r "$REPO_ROOT/requirements.txt"
+ok "dependencies installed"
 
-echo "==> Copying daemon runtime files into $APP_SUPPORT_DIR"
+# ── 5. Runtime copy ────────────────────────────────────────────────────
+
+step "Copying daemon runtime files"
 for module in "${RUNTIME_MODULES[@]}"; do
   cp "$REPO_ROOT/bin/$module" "$APP_SUPPORT_DIR/$module"
 done
+detail "${#RUNTIME_MODULES[@]} modules copied"
+ok "runtime files ready"
 
-echo "==> Installing 6ix9ine and t69 commands into $BIN_DIR"
+# ── 6. CLI wrappers ────────────────────────────────────────────────────
+
+step "Installing CLI wrappers → $BIN_DIR"
 mkdir -p "$BIN_DIR"
 
 cat > "$BIN_DIR/6ix9ine" <<EOF
@@ -70,12 +106,12 @@ cat > "$BIN_DIR/t69" <<EOF
 exec "$VENV_DIR/bin/python3" "$REPO_ROOT/bin/tui.py" "\$@"
 EOF
 chmod 755 "$BIN_DIR/t69"
+ok "6ix9ine and t69 installed"
 
-echo "==> Generating the daemon LaunchAgent plist"
+# ── 7. LaunchAgent plist ───────────────────────────────────────────────
+
+step "Generating LaunchAgent plist"
 mkdir -p "$LAUNCH_AGENTS_DIR"
-# Generated fresh (not copied from plists/) because launchd plists can't
-# expand ~ or \$HOME -- the venv/runtime paths above are absolute and
-# specific to this machine's home directory.
 cat > "$DAEMON_PLIST_DST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -103,33 +139,117 @@ cat > "$DAEMON_PLIST_DST" <<EOF
 </dict>
 </plist>
 EOF
+ok "LaunchAgent plist generated"
 
-echo "==> Setting up the privileged helper (controls sleep; asks for your password once)"
+# ── 8. Privileged helper ───────────────────────────────────────────────
+
+step "Setting up privileged helper"
 if "$BIN_DIR/6ix9ine" helper-status >/dev/null 2>&1; then
-  echo "    already installed and running, skipping"
+  detail "already installed and running, skipping"
 else
   "$BIN_DIR/6ix9ine" setup-privileged-helper
+  sleep 1
 fi
+ok "privileged helper ready"
 
-echo "==> Installing hooks for any AI agents detected on this machine"
-"$BIN_DIR/6ix9ine" install-hooks --all
+# ── 9. Hooks ───────────────────────────────────────────────────────────
 
-echo "==> Starting the background daemon"
+step "Installing agent hooks"
+HOOK_OUTPUT="$("$BIN_DIR/6ix9ine" install-hooks --all 2>&1)"
+INSTALLED="$(echo "$HOOK_OUTPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(d.get('installed',[])))" 2>/dev/null || true)"
+if [ -n "$INSTALLED" ]; then
+  detail "hooks installed for: $INSTALLED"
+fi
+SKIPPED="$(echo "$HOOK_OUTPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(d.get('skipped',[])))" 2>/dev/null || true)"
+FAILED_ITEMS="$(echo "$HOOK_OUTPUT" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for k, v in d.get('failed', {}).items():
+    # shorten the pending-research message
+    print(k.replace('codex', 'Codex CLI').replace('antigravity', 'Antigravity CLI'))
+" 2>/dev/null || true)"
+if [ -n "$FAILED_ITEMS" ]; then
+  while IFS= read -r line; do
+    detail "$line — hook integration pending research"
+  done <<< "$FAILED_ITEMS"
+fi
+ok "hooks configured"
+
+# ── 10. Daemon ─────────────────────────────────────────────────────────
+
+step "Starting background daemon"
 if "$BIN_DIR/6ix9ine" daemon-status >/dev/null 2>&1; then
-  echo "    already running, skipping"
+  detail "already running, skipping"
 else
   "$BIN_DIR/6ix9ine" daemon-start
+  sleep 1
 fi
+ok "daemon running"
 
-echo ""
-echo "6ix9ine is installed and running."
+# ── PATH reminder ──────────────────────────────────────────────────────
+
+PATH_MSG=""
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)
-    echo ""
-    echo "note: $BIN_DIR is not on your PATH yet. Add this to your shell profile:"
-    echo "    export PATH=\"$BIN_DIR:\$PATH\""
+    PATH_MSG="yes"
+    warn "$BIN_DIR not on PATH"
+    detail "Add this to your shell profile:"
+    detail "  ${BOLD}export PATH=\"\$PATH:$BIN_DIR\"${NC}"
     ;;
 esac
+
+# ── Done ───────────────────────────────────────────────────────────────
+
 echo ""
-echo "Run 't69' any time to open the dashboard."
+printf " ${GREEN}✓${NC}  ${BOLD}6ix9ine installed and running${NC}\n\n"
+
+# ── Launch dashboard ───────────────────────────────────────────────────
+
+launch_t69() {
+  local term
+  term="${TERM_PROGRAM:-}"
+
+  # Terminal.app
+  if [ "$term" = "Apple_Terminal" ]; then
+    osascript >/dev/null 2>&1 <<'AS'
+on run
+  tell application "Terminal"
+    set installWin to front window
+    do script "t69"
+    delay 0.3
+    close installWin
+  end tell
+end run
+AS
+    return $?
+  fi
+
+  # iTerm2
+  if [ "$term" = "iTerm.app" ] || [ -n "${ITERM_SESSION_ID:-}" ]; then
+    osascript >/dev/null 2>&1 <<'AS'
+on run
+  tell application "iTerm2"
+    set newWin to (create window with default profile)
+    tell current session of newWin to write text "t69"
+    delay 0.3
+    -- close the install window (the one that isn't newWin)
+    close (every window whose id is not (id of newWin))
+  end tell
+end run
+AS
+    return $?
+  fi
+
+  return 1
+}
+
+if [ -x "$BIN_DIR/t69" ]; then
+  if launch_t69; then
+    detail "opening dashboard…"
+  else
+    warn "could not detect terminal — run ${BOLD}t69${NC} manually"
+  fi
+fi
+
+exit 0
