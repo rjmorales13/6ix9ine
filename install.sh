@@ -206,49 +206,30 @@ printf " ${GREEN}✓${NC}  ${BOLD}6ix9ine installed and running${NC}\n\n"
 
 # ── Launch dashboard ───────────────────────────────────────────────────
 
-launch_t69() {
-  local term
-  term="${TERM_PROGRAM:-}"
-
-  # Terminal.app
-  if [ "$term" = "Apple_Terminal" ]; then
-    osascript >/dev/null 2>&1 <<'AS'
-on run
-  tell application "Terminal"
-    set installWin to front window
-    do script "t69"
-    delay 0.3
-    close installWin
-  end tell
-end run
-AS
-    return $?
-  fi
-
-  # iTerm2
-  if [ "$term" = "iTerm.app" ] || [ -n "${ITERM_SESSION_ID:-}" ]; then
-    osascript >/dev/null 2>&1 <<'AS'
-on run
-  tell application "iTerm2"
-    set newWin to (create window with default profile)
-    tell current session of newWin to write text "t69"
-    delay 0.3
-    -- close the install window (the one that isn't newWin)
-    close (every window whose id is not (id of newWin))
-  end tell
-end run
-AS
-    return $?
-  fi
-
-  return 1
-}
-
 if [ -x "$BIN_DIR/t69" ]; then
-  if launch_t69; then
-    detail "opening dashboard…"
+  # Try Terminal.app first, then iTerm2
+  if osascript >/dev/null 2>&1 <<'AS'
+tell application "Terminal"
+  set installWin to front window
+  do script "t69"
+  delay 0.5
+  close installWin
+end tell
+AS
+  then
+    detail "open ${BOLD}t69${NC} in a new Terminal window"
+  elif osascript >/dev/null 2>&1 <<'AS'
+tell application "iTerm2"
+  set newWin to (create window with default profile)
+  tell current session of newWin to write text "t69"
+  delay 0.5
+  close (every window whose id is not (id of newWin))
+end tell
+AS
+  then
+    detail "open ${BOLD}t69${NC} in a new iTerm2 window"
   else
-    warn "could not detect terminal — run ${BOLD}t69${NC} manually"
+    printf " ${YELLOW}⚠${NC}  run ${BOLD}t69${NC} to open the dashboard\n"
   fi
 fi
 
