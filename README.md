@@ -87,14 +87,26 @@ t69
 
 ## Dashboard
 
-The dashboard is the main place to monitor what is happening right now.
+The `t69` dashboard is your live terminal control surface for monitoring and managing active work.
 
-- Active sessions are shown first
-- Other processes, such as Ollama, are shown alongside them
-- The view is intentionally minimal so status is easy to read at a glance
-- Full-page terminal `status view`: ghost-rainbow wordmark header, per-row session identity colors, held-time color thresholds (green → orange → red → 🔥), timed holds, a live inspector pane, and a quiet auxiliary-process dash
+![6ix9ine dashboard — full view](docs/dashboard-full.svg)
 
-Think of it as the live control surface: one place to confirm what is awake, what is holding sleep open, and what is just running in the background.
+*Full view (120×42): wordmark header, two active sessions, a timed hold, and the module dash with an Ollama process.*
+
+- **Wordmark header**: 4-row half-block pixel banner (`6`/`9` chunky shadow glyphs, `ixine` slanted script), collapses to one line below 30 terminal rows
+- **Status chips**: `ACTIVE`/`IDLE` badge, `SLEEP BLOCKED` / `💤 SLEEP AVAILABLE` indicator
+- **Dense monitor**: active sessions + timed holds, sorted by age. Each session has a stable identity color (hash of session key), agent emoji (`🤖 claude`, `🧰 opencode`, `⌘ codex`), and held-time tier color (green → orange → red → 🔥)
+- **Split inspector**: select a row to see full details — agent, UUID, PID, held duration, reason, sleep state, lid position, thermal reading
+- **Module dash**: auxiliary processes (Ollama, Docker, etc.) in quiet gray, filterable with `a`/`r` keys
+- **Keybindings**: `q` quit, `k` kill selected session, `x` purge all, `a` ignore process, `r` restore, `↑↓` select
+
+![6ix9ine dashboard — collapsed header](docs/dashboard-collapsed.svg)
+
+*Collapsed view (80×22): header shrinks to one line, everything still fits.*
+
+![6ix9ine dashboard — idle state](docs/dashboard-idle.svg)
+
+*Idle state: daemon offline, no active sessions, sleep available.*
 
 ## Want Something Added?
 
