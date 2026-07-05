@@ -207,21 +207,22 @@ printf " ${GREEN}✓${NC}  ${BOLD}6ix9ine installed and running${NC}\n\n"
 # ── Launch dashboard ───────────────────────────────────────────────────
 
 if [ -x "$BIN_DIR/t69" ]; then
-  # Try Terminal.app first, then iTerm2
-  if osascript >/dev/null 2>&1 <<'AS'
+  # Try Terminal.app first, then iTerm2.
+  # Use full paths since new terminal windows may not have ~/.local/bin on PATH.
+  if osascript >/dev/null 2>&1 <<AS
 tell application "Terminal"
   set installWin to front window
-  do script "t69"
+  do script "$BIN_DIR/t69; exit"
   delay 0.5
   close installWin
 end tell
 AS
   then
     detail "open ${BOLD}t69${NC} in a new Terminal window"
-  elif osascript >/dev/null 2>&1 <<'AS'
+  elif osascript >/dev/null 2>&1 <<AS
 tell application "iTerm2"
   set newWin to (create window with default profile)
-  tell current session of newWin to write text "t69"
+  tell current session of newWin to write text "$BIN_DIR/t69"
   delay 0.5
   close (every window whose id is not (id of newWin))
 end tell
