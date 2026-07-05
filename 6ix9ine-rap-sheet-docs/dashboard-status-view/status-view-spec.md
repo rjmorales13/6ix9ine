@@ -68,8 +68,9 @@ digit shadows barely there. *There, but not there.*
   (hash of session key → palette), e.g. `#7cc4ff`, `#f5d76e`, `#b3e07c`,
   `#e8e6e1`
 - A session's name color and its held-time color must differ in the same row
-- Reason column stays wide (it holds task descriptions/prompts) and is the
-  only wrapping column
+- Reason column stays wide (it holds task descriptions/prompts). Textual's
+  DataTable renders single-line cells, so long reasons truncate in the table;
+  the inspector pane always shows the full reason text (accepted deviation)
 - Session table columns: `AGENT · UUID (short) · PID · HELD · REASON`
 - **PID**: no current code path supplies a session PID (see handoff doc,
   bug #6 fix) — render a dim `—` (`#4a525c`) when absent
