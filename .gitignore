@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+.idea/
+node_modules/
+*.sock
+state.json
+.claude/settings.local.json
+README-WIP.md
