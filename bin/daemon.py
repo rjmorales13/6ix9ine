@@ -93,12 +93,29 @@ class Daemon:
     async def _call_helper(self, method: str, **params: object) -> dict:
         try:
             return await self._transport(self.helper_socket_path, {"method": method, "params": params})
-        except ConnectionError as exc:
+        except (OSError, TimeoutError) as exc:
             return {"ok": False, "error": str(exc)}
 
     async def _reconcile_sleep_block(self) -> None:
         desired = self.registry.is_active()
         if desired == self._sleep_blocked:
+            return
+        response = await self._call_helper("set_sleep_blocked", blocked=desired)
+        if response.get("ok"):
+            self._sleep_blocked = desired
+
+    async def _reconcile_sleep_block_periodic(self) -> None:
+        """Verify helper state matches desired state on every tick.
+
+        Unlike _reconcile_sleep_block (called on state changes), this runs
+        unconditionally every tick to catch helper restarts that reset
+        pmset disablesleep to 0 without the daemon noticing.
+        """
+        desired = self.registry.is_active()
+        state_resp = await self._call_helper("get_state")
+        if not state_resp.get("ok"):
+            return
+        if state_resp.get("sleep_blocked") == desired:
             return
         response = await self._call_helper("set_sleep_blocked", blocked=desired)
         if response.get("ok"):
@@ -170,6 +187,7 @@ class Daemon:
             await self._reconcile_sleep_block()
             self._persist_state()
 
+        await self._reconcile_sleep_block_periodic()
         await self._poll_lid()
         await self._poll_thermal()
 
