@@ -67,6 +67,7 @@ class Daemon:
         notify_summary_fn: Callable = notify_summary,
         cpu_percent_fn: Callable = default_cpu_percent,
         pid_exists_fn: Callable = psutil.pid_exists,
+        agent_scan_dirs: Optional[dict[str, Path]] = None,
         tick_interval: float = 5.0,
     ) -> None:
         self.registry = registry if registry is not None else SessionRegistry()
@@ -86,6 +87,11 @@ class Daemon:
         self._notify_summary = notify_summary_fn
         self._cpu_percent = cpu_percent_fn
         self._pid_exists = pid_exists_fn
+        self._agent_scan_dirs = (
+            agent_scan_dirs
+            if agent_scan_dirs is not None
+            else {"claude": Path.home() / ".claude" / "sessions"}
+        )
         self.tick_interval = tick_interval
         self._now = time.time
         self._sleep_blocked = False
@@ -116,11 +122,8 @@ class Daemon:
         changed = False
 
         tracked_keys = set(self.registry.sessions().keys())
-        agent_scan_dirs = {
-            "claude": Path.home() / ".claude" / "sessions",
-        }
 
-        for agent, session_dir in agent_scan_dirs.items():
+        for agent, session_dir in self._agent_scan_dirs.items():
             if not session_dir.is_dir():
                 continue
             for session_file in session_dir.iterdir():

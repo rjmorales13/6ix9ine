@@ -21,6 +21,7 @@ def make_daemon(tmp_path, **overrides):
     chime_calls = []
     notify_calls = []
 
+    scan_dir = tmp_path / "sessions"
     kwargs = dict(
         registry=SessionRegistry(),
         lid=LidMonitor(),
@@ -32,6 +33,7 @@ def make_daemon(tmp_path, **overrides):
         pid_exists_fn=lambda pid: True,
         cpu_percent_fn=lambda pid: 0.0,
         read_lid_state_fn=lambda: "open",
+        agent_scan_dirs={"claude": scan_dir},
     )
     kwargs.update(overrides)
     daemon = Daemon(**kwargs)
@@ -195,3 +197,138 @@ async def test_tick_thermal_cutout_releases_all_sessions_while_lid_closed(tmp_pa
 
     assert daemon.registry.count() == 0
     assert daemon.thermal.cutout_fired is True
+
+
+def _write_session(session_dir, pid, session_id, status="busy", name="", alive=True):
+    data = {"pid": pid, "sessionId": session_id, "status": status, "name": name}
+    (session_dir / f"{pid}.json").write_text(json.dumps(data))
+
+
+class TestSniffAgents:
+    """_sniff_agents auto-detects running agent sessions via session files."""
+
+    def test_acquires_busy_session(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        _write_session(scan_dir, pid=1001, session_id="ses-busy", status="busy")
+
+        result = daemon._sniff_agents()
+
+        assert result is True
+        assert "ses-busy" in daemon.registry.sessions()
+        assert daemon.registry.sessions()["ses-busy"].agent == "claude"
+        assert daemon.registry.sessions()["ses-busy"].pid == 1001
+
+    def test_skips_idle_session(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        _write_session(scan_dir, pid=1002, session_id="ses-idle", status="idle")
+
+        result = daemon._sniff_agents()
+
+        assert result is False
+        assert "ses-idle" not in daemon.registry.sessions()
+
+    def test_skips_dead_pid(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path, pid_exists_fn=lambda pid: False)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        _write_session(scan_dir, pid=1003, session_id="ses-dead", status="busy")
+
+        result = daemon._sniff_agents()
+
+        assert result is False
+        assert "ses-dead" not in daemon.registry.sessions()
+
+    def test_skips_session_without_pid(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        data = {"sessionId": "ses-nopid", "status": "busy"}
+        (scan_dir / "nopid.json").write_text(json.dumps(data))
+
+        result = daemon._sniff_agents()
+
+        assert result is False
+
+    def test_skips_already_tracked_session(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        daemon.registry.acquire("ses-tracked", agent="claude", pid=1004)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        _write_session(scan_dir, pid=1004, session_id="ses-tracked", status="busy")
+
+        result = daemon._sniff_agents()
+
+        assert result is False  # no new sessions acquired
+
+    def test_handles_missing_session_dir(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+
+        result = daemon._sniff_agents()
+
+        assert result is False
+
+    def test_handles_empty_session_dir(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        daemon._agent_scan_dirs["claude"].mkdir(parents=True)
+
+        result = daemon._sniff_agents()
+
+        assert result is False
+
+    def test_handles_invalid_json_gracefully(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        (scan_dir / "garbage.json").write_text("not valid json{{{")
+
+        result = daemon._sniff_agents()
+
+        assert result is False
+
+    def test_skips_non_json_files(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        (scan_dir / "readme.txt").write_text("hello")
+
+        result = daemon._sniff_agents()
+
+        assert result is False
+
+    def test_acquires_named_session(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        _write_session(scan_dir, pid=1005, session_id="ses-named", status="busy", name="omega-42")
+
+        daemon._sniff_agents()
+
+        assert daemon.registry.sessions()["ses-named"].reason == "sniffed: omega-42"
+
+    @pytest.mark.asyncio
+    async def test_tick_integrates_sniffing(self, tmp_path):
+        daemon, _, _, _ = make_daemon(tmp_path)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        _write_session(scan_dir, pid=1006, session_id="ses-tick", status="busy")
+
+        await daemon.tick()
+
+        assert "ses-tick" in daemon.registry.sessions()
+        assert daemon.registry.is_active()
+
+    def test_run_forever_sniffs_on_startup(self, tmp_path):
+        daemon, helper_calls, _, _ = make_daemon(tmp_path)
+        scan_dir = daemon._agent_scan_dirs["claude"]
+        scan_dir.mkdir(parents=True)
+        _write_session(scan_dir, pid=1007, session_id="ses-startup", status="busy")
+
+        # Manually simulate run_forever's startup sniff
+        daemon._sniff_agents()
+
+        assert "ses-startup" in daemon.registry.sessions()
+
