@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
     hold.add_argument("--for", dest="duration", required=True)
     hold.add_argument("--reason", required=True)
 
+    track = subparsers.add_parser("track")
+    track.add_argument("session_key")
+    track.add_argument("--tool", required=True, choices=sorted(shared.VALID_AGENTS))
+    track.add_argument("--pids", nargs="+", type=int, required=True)
+
     subparsers.add_parser("status")
 
     install_hooks = subparsers.add_parser("install-hooks")
@@ -91,6 +96,16 @@ def cmd_release(args, send_request: Deps = None) -> tuple[dict, int]:
 def cmd_hold(args, send_request: Deps = None) -> tuple[dict, int]:
     send_request = send_request or ipc.send_request
     payload = {"cmd": "HOLD", "for": args.duration, "reason": args.reason}
+    try:
+        response = send_request(shared.socket_path(), payload)
+    except ConnectionError as exc:
+        return {"ok": False, "error": f"daemon not running: {exc}"}, shared.EXIT_DAEMON_NOT_RUNNING
+    return response, (shared.EXIT_OK if response.get("ok") else shared.EXIT_GENERAL_ERROR)
+
+
+def cmd_track(args, send_request: Deps = None) -> tuple[dict, int]:
+    send_request = send_request or ipc.send_request
+    payload = {"cmd": "TRACK", "session": args.session_key, "tool": args.tool, "pids": args.pids}
     try:
         response = send_request(shared.socket_path(), payload)
     except ConnectionError as exc:
@@ -281,6 +296,7 @@ def main(argv: Optional[list] = None) -> int:
         "acquire": cmd_acquire,
         "release": cmd_release,
         "hold": cmd_hold,
+        "track": cmd_track,
         "status": cmd_status,
         "install-hooks": cmd_install_hooks,
         "uninstall-hooks": cmd_uninstall_hooks,

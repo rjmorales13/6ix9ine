@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+from typing import Callable, Optional
 
 import shared
-from session_registry import SessionRegistry
+from session_registry import CommandPid, SessionRegistry
 
 
 def handle_acquire(registry: SessionRegistry, request: dict, now: Optional[float] = None) -> dict:
@@ -71,3 +71,46 @@ def handle_status(
 def handle_kill_all(registry: SessionRegistry) -> dict:
     released = registry.release_all()
     return {"ok": True, "status": "IDLE", "released": released}
+
+
+def handle_track(
+    registry: SessionRegistry,
+    request: dict,
+    create_time_fn: Optional[Callable[[int], Optional[float]]] = None,
+    now: Optional[float] = None,
+) -> dict:
+    """Register background-command PIDs self-reported by the epilogue reporter.
+
+    This is the receiving side of the daemon.tick() -> epilogue reporter IPC:
+    the epilogue hook wraps every Bash command, captures $!, resolves its
+    create_time (to guard against OS PID reuse), and submits a TRACK request.
+
+    Unlike handle_acquire(), TRACK deliberately does NOT track a session-level
+    PID: the only PID visible in a TRACK request is from the epilogue reporter
+    subprocess, which exits immediately after submitting. The session-level PID
+    (if any) comes from sniffing agent session files or explicit acquire().
+    TRACK only enriches command_pids, which are pruned independently by
+    prune_command_pids(is_alive) based on their own create_time guards.
+    """
+    if create_time_fn is None:
+        create_time_fn = lambda pid: None
+
+    session = request.get("session")
+    pids = request.get("pids")
+
+    if not session:
+        return {"ok": False, "error": "session is required"}
+    if pids is None or not isinstance(pids, list):
+        return {"ok": False, "error": "pids is required (list of integers)"}
+
+    # Resolve create_time for each PID; skip any that are dead or inaccessible.
+    command_pids: list[CommandPid] = []
+    for pid in pids:
+        create_time = create_time_fn(pid)
+        if create_time is not None:
+            command_pids.append(CommandPid(pid=pid, create_time=create_time))
+
+    if command_pids:
+        registry.track_pids(session, command_pids, agent="manual", now=now)
+
+    return {"ok": True, "status": "ACTIVE" if registry.is_active() else "IDLE", "count": registry.count()}

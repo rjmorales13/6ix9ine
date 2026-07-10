@@ -45,6 +45,33 @@ _RELEASE_CODE = (
     "    pass\n"
 )
 
+# PreToolUse hook that wraps Bash commands to track background command PIDs.
+# The epilogue captures `jobs -p` after the original command exits and reports
+# them to the daemon via `6ix9ine track`. Prologue reports the tool shell PID
+# itself if run_in_background: true.
+_BASH_HOOK_CODE = (
+    "import json, subprocess, sys\n"
+    "try:\n"
+    "    data = json.load(sys.stdin)\n"
+    "    session_id = data.get('session_id') or ''\n"
+    "    command = data.get('tool_input', {}).get('command') or ''\n"
+    "    run_in_background = data.get('tool_input', {}).get('run_in_background', False)\n"
+    "    if not session_id or not command:\n"
+    "        print(json.dumps(data))\n"
+    "        sys.exit(0)\n"
+    "    prologue = ''\n"
+    "    if run_in_background:\n"
+    "        prologue = f'{_CLI_PATH!r} track {session_id!r} --tool claude --pids $$ >/dev/null 2>&1; '\n"
+    "    epilogue = (f'; __69_rc=$?; __69_pids=$(jobs -p); '\n"
+    "                f'[ -n \"$__69_pids\" ] && {_CLI_PATH!r} track {session_id!r} --tool claude --pids $__69_pids >/dev/null 2>&1; '\n"
+    "                f'exit $__69_rc')\n"
+    "    wrapped_command = prologue + command + epilogue\n"
+    "    data['tool_input']['command'] = wrapped_command\n"
+    "    print(json.dumps(data))\n"
+    "except Exception:\n"
+    "    print(json.dumps(data) if 'data' in dir() else '{}')\n"
+)
+
 
 def detect() -> bool:
     return CONFIG_DIR.exists()
@@ -82,6 +109,20 @@ def _contains_our_group(groups: list, code: str) -> bool:
     return False
 
 
+def _make_bash_hook_group() -> dict:
+    """PreToolUse hook with Bash matcher for tracking background command PIDs."""
+    return {
+        "matcher": "Bash",
+        "hooks": [
+            {
+                "type": "command",
+                "command": sys.executable,
+                "args": ["-c", _BASH_HOOK_CODE],
+            }
+        ],
+    }
+
+
 def install() -> dict:
     if SETTINGS_FILE.exists():
         shutil.copy(SETTINGS_FILE, SETTINGS_FILE.with_suffix(SETTINGS_FILE.suffix + ".bak"))
@@ -96,6 +137,21 @@ def install() -> dict:
     stop_group = hooks.setdefault("Stop", [])
     if not _contains_our_group(stop_group, _RELEASE_CODE):
         stop_group.append(_make_group(_RELEASE_CODE))
+
+    pretooluse_groups = hooks.setdefault("PreToolUse", [])
+    bash_group_exists = any(
+        g.get("matcher") == "Bash" and _contains_our_group([g], _BASH_HOOK_CODE)
+        for g in pretooluse_groups
+    )
+    if not bash_group_exists:
+        pretooluse_groups.append(_make_bash_hook_group())
+
+    # Add Bash(6ix9ine track:*) to permissions.allow (idempotent)
+    permissions = settings.setdefault("permissions", {})
+    allow_list = permissions.setdefault("allow", [])
+    bash_track_perm = "Bash(6ix9ine track:*)"
+    if bash_track_perm not in allow_list:
+        allow_list.append(bash_track_perm)
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(json.dumps(settings, indent=2))
@@ -116,6 +172,26 @@ def uninstall() -> dict:
         else:
             hooks.pop(event, None)
 
+    # Remove our Bash PreToolUse hook
+    pretooluse = hooks.get("PreToolUse", [])
+    remaining_pretooluse = [
+        g for g in pretooluse
+        if not (g.get("matcher") == "Bash" and _contains_our_group([g], _BASH_HOOK_CODE))
+    ]
+    if remaining_pretooluse:
+        hooks["PreToolUse"] = remaining_pretooluse
+    else:
+        hooks.pop("PreToolUse", None)
+
+    # Remove Bash track permission
+    permissions = settings.get("permissions", {})
+    allow_list = permissions.get("allow", [])
+    permissions["allow"] = [p for p in allow_list if p != "Bash(6ix9ine track:*)"]
+    if not permissions["allow"]:
+        permissions.pop("allow", None)
+    if not permissions:
+        settings.pop("permissions", None)
+
     if not hooks:
         settings.pop("hooks", None)
 
@@ -126,6 +202,12 @@ def uninstall() -> dict:
 def verify() -> bool:
     settings = _load_settings()
     hooks = settings.get("hooks", {})
-    return _contains_our_group(hooks.get("UserPromptSubmit", []), _ACQUIRE_CODE) and _contains_our_group(
-        hooks.get("Stop", []), _RELEASE_CODE
+    # Check UserPromptSubmit, Stop, and PreToolUse Bash hook
+    has_acquire = _contains_our_group(hooks.get("UserPromptSubmit", []), _ACQUIRE_CODE)
+    has_release = _contains_our_group(hooks.get("Stop", []), _RELEASE_CODE)
+    pretooluse = hooks.get("PreToolUse", [])
+    has_bash_hook = any(
+        g.get("matcher") == "Bash" and _contains_our_group([g], _BASH_HOOK_CODE)
+        for g in pretooluse
     )
+    return has_acquire and has_release and has_bash_hook
