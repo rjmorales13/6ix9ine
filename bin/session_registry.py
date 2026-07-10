@@ -1,10 +1,23 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Optional
 
 import shared
+
+
+@dataclass(frozen=True)
+class CommandPid:
+    """A background-command PID self-reported by the epilogue reporter.
+
+    create_time anchors the PID against OS PID reuse: a prune check only
+    treats the process as "the same one we tracked" if both the pid and its
+    process-start time still match.
+    """
+
+    pid: int
+    create_time: float
 
 
 @dataclass(frozen=True)
@@ -14,6 +27,10 @@ class Session:
     reason: str
     timestamp: float
     pid: Optional[int] = None
+    # False once the owning agent turn has ended (RELEASE called); the session
+    # is kept alive only by any live command_pids until they're pruned.
+    turn_open: bool = True
+    command_pids: frozenset[CommandPid] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -52,11 +69,57 @@ class SessionRegistry:
             timestamp=now if now is not None else time.time(),
             pid=pid,
         )
+        existing = self._sessions.get(key)
+        if existing is not None:
+            # Merge, don't overwrite: a re-acquire of a live key must carry
+            # forward any command PIDs the epilogue reporter already tracked
+            # for it, or they'd leak out of the registry silently.
+            session = replace(session, command_pids=existing.command_pids)
+        self._sessions[key] = session
+        return session
+
+    def track_pids(
+        self,
+        key: str,
+        pids: list[CommandPid],
+        agent: str = "manual",
+        now: Optional[float] = None,
+    ) -> Session:
+        """Record background-command PIDs self-reported by the epilogue reporter.
+
+        If the session key is unknown (e.g. TRACK racing ahead of ACQUIRE, or
+        arriving after RELEASE already popped an empty session), create a
+        stub session with turn_open=False so it's kept alive purely by the
+        tracked command PIDs and cleaned up once they die.
+        """
+        existing = self._sessions.get(key)
+        if existing is not None:
+            session = replace(existing, command_pids=existing.command_pids | frozenset(pids))
+        else:
+            session = Session(
+                key=key,
+                agent=agent,
+                reason="",
+                timestamp=now if now is not None else time.time(),
+                pid=None,
+                turn_open=False,
+                command_pids=frozenset(pids),
+            )
         self._sessions[key] = session
         return session
 
     def release(self, key: str) -> bool:
-        return self._sessions.pop(key, None) is not None
+        session = self._sessions.get(key)
+        if session is None:
+            return False
+        if session.command_pids:
+            # Turn is over, but background commands are still running -- keep
+            # the session so sleep stays blocked until prune_command_pids
+            # observes them exit.
+            self._sessions[key] = replace(session, turn_open=False)
+        else:
+            del self._sessions[key]
+        return True
 
     def add_hold(
         self, hold_id: str, reason: str, duration_seconds: float, now: Optional[float] = None
@@ -96,6 +159,27 @@ class SessionRegistry:
             del self._sessions[key]
         return keys
 
+    def prune_command_pids(self, is_alive: Callable[[CommandPid], bool]) -> list[str]:
+        """Drop dead command PIDs everywhere, then remove sessions they were
+        the only thing keeping alive.
+
+        A session is removed once turn_open is False (its agent turn ended),
+        it has no remaining live command_pids, and it has no session-level
+        pid (the peer-cred pid from acquire() -- daemon_commands.handle_track
+        deliberately never stores one, so this branch only fires for
+        acquire()-based sessions once prune_dead has already cleared theirs).
+        """
+        removed: list[str] = []
+        for key, session in list(self._sessions.items()):
+            live_pids = frozenset(cp for cp in session.command_pids if is_alive(cp))
+            if live_pids != session.command_pids:
+                session = replace(session, command_pids=live_pids)
+                self._sessions[key] = session
+            if not session.turn_open and not session.command_pids and session.pid is None:
+                del self._sessions[key]
+                removed.append(key)
+        return removed
+
     def count(self) -> int:
         return len(self._sessions) + len(self._holds)
 
@@ -117,6 +201,10 @@ class SessionRegistry:
                 "pid": session.pid,
                 "reason": session.reason,
                 "held_for": shared.format_duration(now - session.timestamp),
+                "command_pids": [
+                    {"pid": cp.pid, "create_time": cp.create_time}
+                    for cp in sorted(session.command_pids, key=lambda cp: cp.pid)
+                ],
             }
             for key, session in self._sessions.items()
         }

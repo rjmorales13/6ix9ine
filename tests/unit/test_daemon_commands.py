@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import daemon_commands
 import shared
-from session_registry import SessionRegistry
+from session_registry import CommandPid, SessionRegistry
 
 
 def test_handle_acquire_adds_session_and_reports_active():
@@ -102,3 +102,101 @@ def test_handle_kill_all_releases_everything():
 
     assert response == {"ok": True, "status": "IDLE", "released": 2}
     assert registry.count() == 0
+
+
+# -- Epilogue reporter: background command PID tracking --
+
+
+def test_handle_track_registers_command_pids():
+    """TRACK command registers background command PIDs with create_time."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="claude", now=1000.0)
+
+    def fake_create_time_fn(pid):
+        return {1001: 999.0, 1002: 998.0}.get(pid)
+
+    response = daemon_commands.handle_track(
+        registry,
+        {"session": "key-1", "tool": "claude", "pids": [1001, 1002]},
+        create_time_fn=fake_create_time_fn,
+        now=1000.0,
+    )
+
+    assert response["ok"] is True
+    assert response["status"] == "ACTIVE"
+    session = registry.sessions()["key-1"]
+    assert session.command_pids == frozenset(
+        {CommandPid(pid=1001, create_time=999.0), CommandPid(pid=1002, create_time=998.0)}
+    )
+
+
+def test_handle_track_requires_session():
+    registry = SessionRegistry()
+
+    def fake_create_time_fn(pid):
+        return 100.0
+
+    response = daemon_commands.handle_track(
+        registry, {"pids": [1001]}, create_time_fn=fake_create_time_fn
+    )
+
+    assert response["ok"] is False
+    assert "session" in response["error"]
+
+
+def test_handle_track_skips_pids_with_no_create_time():
+    """A PID with no create_time (dead or inaccessible) is silently skipped."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="claude", now=1000.0)
+
+    def fake_create_time_fn(pid):
+        # 1001 is accessible, 1002 is dead
+        return 999.0 if pid == 1001 else None
+
+    response = daemon_commands.handle_track(
+        registry,
+        {"session": "key-1", "tool": "claude", "pids": [1001, 1002]},
+        create_time_fn=fake_create_time_fn,
+        now=1000.0,
+    )
+
+    assert response["ok"] is True
+    session = registry.sessions()["key-1"]
+    # Only the live PID is tracked
+    assert session.command_pids == frozenset({CommandPid(pid=1001, create_time=999.0)})
+
+
+def test_handle_track_on_unknown_session():
+    """TRACK arriving before ACQUIRE creates a closed-turn session stub."""
+    registry = SessionRegistry()
+
+    def fake_create_time_fn(pid):
+        return 50.0
+
+    response = daemon_commands.handle_track(
+        registry,
+        {"session": "orphan-key", "tool": "claude", "pids": [2001]},
+        create_time_fn=fake_create_time_fn,
+        now=1000.0,
+    )
+
+    assert response["ok"] is True
+    session = registry.sessions()["orphan-key"]
+    assert session.turn_open is False
+    assert session.command_pids == frozenset({CommandPid(pid=2001, create_time=50.0)})
+
+
+def test_handle_track_requires_pids_list():
+    registry = SessionRegistry()
+
+    def fake_create_time_fn(pid):
+        return 100.0
+
+    response = daemon_commands.handle_track(
+        registry,
+        {"session": "key-1"},  # missing pids
+        create_time_fn=fake_create_time_fn,
+    )
+
+    assert response["ok"] is False
+    assert "pids" in response["error"]

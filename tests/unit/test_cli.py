@@ -159,6 +159,39 @@ def test_cmd_status_returns_daemon_not_running():
     assert exit_code == shared.EXIT_DAEMON_NOT_RUNNING
 
 
+def test_build_parser_parses_track():
+    args = cli.build_parser().parse_args(["track", "abc-123", "--tool", "claude", "--pids", "1001", "1002"])
+    assert args.command == "track"
+    assert args.session_key == "abc-123"
+    assert args.tool == "claude"
+    assert args.pids == [1001, 1002]
+
+
+def test_cmd_track_sends_expected_payload():
+    captured = {}
+
+    def fake_send_request(sock_path, payload, timeout=5.0):
+        captured["payload"] = payload
+        return {"ok": True, "status": "ACTIVE", "count": 1}
+
+    args = SimpleNamespace(session_key="abc-123", tool="claude", pids=[1001, 1002])
+    _, exit_code = cli.cmd_track(args, send_request=fake_send_request)
+
+    assert captured["payload"] == {"cmd": "TRACK", "session": "abc-123", "tool": "claude", "pids": [1001, 1002]}
+    assert exit_code == shared.EXIT_OK
+
+
+def test_cmd_track_returns_daemon_not_running():
+    def fake_send_request(sock_path, payload, timeout=5.0):
+        raise ConnectionError("no socket")
+
+    args = SimpleNamespace(session_key="abc-123", tool="claude", pids=[1001])
+    response, exit_code = cli.cmd_track(args, send_request=fake_send_request)
+
+    assert response["ok"] is False
+    assert exit_code == shared.EXIT_DAEMON_NOT_RUNNING
+
+
 # --- hook install/uninstall dispatch ---
 
 

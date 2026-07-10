@@ -16,9 +16,9 @@ import shared
 import thermal_monitor
 from idle_tracker import IdleTracker
 from lid_monitor import LidMonitor
-from session_registry import SessionRegistry
+from session_registry import CommandPid, SessionRegistry
 
-MUTATING_COMMANDS = {"ACQUIRE", "RELEASE", "HOLD", "KILL_ALL"}
+MUTATING_COMMANDS = {"ACQUIRE", "RELEASE", "HOLD", "TRACK", "KILL_ALL"}
 _GLASS_CHIME = Path("/System/Library/Sounds/Glass.aiff")
 
 
@@ -49,6 +49,13 @@ def default_cpu_percent(pid: int) -> float:
         return 0.0
 
 
+def default_create_time(pid: int) -> Optional[float]:
+    try:
+        return psutil.Process(pid).create_time()
+    except psutil.NoSuchProcess:
+        return None
+
+
 class Daemon:
     """Wires SessionRegistry + lid/thermal monitors to the CLI socket and the helper."""
 
@@ -66,6 +73,7 @@ class Daemon:
         play_chime_fn: Callable = play_chime,
         notify_summary_fn: Callable = notify_summary,
         cpu_percent_fn: Callable = default_cpu_percent,
+        create_time_fn: Callable = default_create_time,
         pid_exists_fn: Callable = psutil.pid_exists,
         agent_scan_dirs: Optional[dict[str, Path]] = None,
         tick_interval: float = 5.0,
@@ -86,6 +94,7 @@ class Daemon:
         self._play_chime = play_chime_fn
         self._notify_summary = notify_summary_fn
         self._cpu_percent = cpu_percent_fn
+        self._create_time_fn = create_time_fn
         self._pid_exists = pid_exists_fn
         self._agent_scan_dirs = (
             agent_scan_dirs
@@ -204,6 +213,10 @@ class Daemon:
             )
         elif cmd == "KILL_ALL":
             response = daemon_commands.handle_kill_all(self.registry)
+        elif cmd == "TRACK":
+            response = daemon_commands.handle_track(
+                self.registry, request, create_time_fn=self._create_time_fn, now=now
+            )
         else:
             return {"ok": False, "error": f"unknown command: {cmd}"}
 
@@ -237,6 +250,20 @@ class Daemon:
         for pid in list(idle_pids):
             if pid not in {s.pid for s in self.registry.sessions().values()}:
                 self.idle_tracker.forget(pid)
+
+        def is_command_pid_alive(cp: CommandPid) -> bool:
+            # PID reuse guard: only treat a PID as alive if it exists AND its
+            # create_time matches (within 1s tolerance). OS PID recycle won't fool us.
+            if not self._pid_exists(cp.pid):
+                return False
+            current_create_time = self._create_time_fn(cp.pid)
+            if current_create_time is None:
+                return False
+            # Allow 1s tolerance for minor timing skew
+            return abs(current_create_time - cp.create_time) <= 1.0
+
+        if self.registry.prune_command_pids(is_command_pid_alive):
+            changed = True
 
         if self.registry.expire_holds(now=now):
             changed = True
