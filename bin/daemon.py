@@ -104,6 +104,58 @@ class Daemon:
         if response.get("ok"):
             self._sleep_blocked = desired
 
+    def _sniff_agents(self) -> bool:
+        """Scan for running agent sessions via process + session-file detection.
+
+        Falls back to process-sniffing when agent hooks are not configured or
+        are being overridden (e.g., by cmux's --settings flag). Acquires any
+        session whose agent PID is alive but not yet tracked in the registry.
+        Returns True if any new sessions were acquired.
+        """
+        now = self._now()
+        changed = False
+
+        tracked_keys = set(self.registry.sessions().keys())
+        agent_scan_dirs = {
+            "claude": Path.home() / ".claude" / "sessions",
+        }
+
+        for agent, session_dir in agent_scan_dirs.items():
+            if not session_dir.is_dir():
+                continue
+            for session_file in session_dir.iterdir():
+                if session_file.suffix != ".json":
+                    continue
+                try:
+                    data = json.loads(session_file.read_text())
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+                session_id = data.get("sessionId") or data.get("session_id") or ""
+                if not session_id:
+                    continue
+                if session_id in tracked_keys:
+                    continue
+
+                pid = data.get("pid")
+                status = data.get("status", "")
+                if pid is None or not self._pid_exists(pid):
+                    continue
+                if status != "busy":
+                    continue
+
+                self.registry.acquire(
+                    session_id,
+                    agent=agent,
+                    reason=f"sniffed: {data.get('name', '')}",
+                    pid=pid,
+                    now=now,
+                )
+                changed = True
+                tracked_keys.add(session_id)
+
+        return changed
+
     async def _reconcile_sleep_block_periodic(self) -> None:
         """Verify helper state matches desired state on every tick.
 
@@ -162,6 +214,9 @@ class Daemon:
         now = self._now()
         changed = False
 
+        if self._sniff_agents():
+            changed = True
+
         if self.registry.prune_dead(self._pid_exists):
             changed = True
 
@@ -215,6 +270,8 @@ class Daemon:
             self._persist_state()
 
     async def run_forever(self) -> None:
+        self._sniff_agents()
+        self._persist_state()
         server = ipc.LineJSONServer(self.socket_path, self.handle_request)
         await server.start()
         try:
