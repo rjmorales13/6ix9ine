@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "plugin": "6ix9ine",
+  "hooks": [
+    {
+      "event": "UserPromptSubmit",
+      "handler": "handleUserPromptSubmit",
+      "description": "Acquire sleep-blocking session when user submits a prompt",
+      "timeout": 3000,
+      "blocking": false,
+      "matcher": null
+    },
+    {
+      "event": "Stop",
+      "handler": "handleStop",
+      "description": "Release sleep-blocking session when Claude finishes a turn",
+      "timeout": 3000,
+      "blocking": false,
+      "matcher": null
+    },
+    {
+      "event": "PreToolUse",
+      "handler": "handlePreToolUse",
+      "description": "Track background command PIDs for Bash tool invocations",
+      "timeout": 3000,
+      "blocking": false,
+      "matcher": "Bash"
+    }
+  ],
+  "lifecycle": {
+    "onActivate": "handleActivate",
+    "onDeactivate": "handleDeactivate"
+  }
+}
