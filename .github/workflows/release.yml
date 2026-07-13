@@ -97,18 +97,38 @@ jobs:
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
           SHA_ARM64=$(cat dist/6ix9ine-v${TAG_VERSION}-arm64.tar.gz.sha256 | cut -d ' ' -f 1)
+          SHA_INTEL=$(cat dist/6ix9ine-v${TAG_VERSION}-x86_64.tar.gz.sha256 | cut -d ' ' -f 1)
+          
+          # Checkout main branch explicitly to avoid detached HEAD on tag push
+          git checkout main
+          git pull origin main
           
           python -c "
           import re, pathlib
           p = pathlib.Path('Formula/6ix9ine.rb')
           content = p.read_text()
+          
+          # Update URL & SHA256 for arm64 inside on_arm block
+          on_arm_pattern = r'(on_arm do\s+url\s+\")[^\"]+(\"\s+sha256\s+\")[^\"]+(\")'
           content = re.sub(
-              r'url \"[^\"]+\"',
-              f'url \"https://github.com/rjmorales13/6ix9ine/releases/download/v{TAG_VERSION}/6ix9ine-v{TAG_VERSION}-arm64.tar.gz\"',
-              content
+              on_arm_pattern,
+              f'\\g<1>https://github.com/rjmorales13/6ix9ine/releases/download/v{TAG_VERSION}/6ix9ine-v{TAG_VERSION}-arm64.tar.gz\\g<2>{SHA_ARM64}\\g<3>',
+              content,
+              flags=re.MULTILINE
           )
-          content = re.sub(r'sha256 \"[^\"]+\"', f'sha256 \"{SHA_ARM64}\"', content)
+          
+          # Update URL & SHA256 for x86_64 inside on_intel block
+          on_intel_pattern = r'(on_intel do\s+url\s+\")[^\"]+(\"\s+sha256\s+\")[^\"]+(\")'
+          content = re.sub(
+              on_intel_pattern,
+              f'\\g<1>https://github.com/rjmorales13/6ix9ine/releases/download/v{TAG_VERSION}/6ix9ine-v{TAG_VERSION}-x86_64.tar.gz\\g<2>{SHA_INTEL}\\g<3>',
+              content,
+              flags=re.MULTILINE
+          )
+          
+          # Update version
           content = re.sub(r'version \"[^\"]+\"', f'version \"{TAG_VERSION}\"', content)
+          
           p.write_text(content)
           "
           
