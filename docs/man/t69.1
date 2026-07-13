@@ -1,0 +1,39 @@
+.TH t69 1 "July 2026" "6ix9ine v1.0.0" "t69 Dashboard Manual"
+.SH NAME
+t69 \- Terminal User Interface (TUI) dashboard for 6ix9ine
+.SH SYNOPSIS
+.B t69
+[\fB\-h\fR]
+.SH DESCRIPTION
+.B t69
+is the interactive terminal dashboard for the
+.BR 6ix9ine (1)
+sleep-blocking daemon. It provides a real-time visualization of current sleep assertions, active agent sessions, timed holds, CPU temperature, lid state, and auxiliary developer dependencies (e.g., Docker, Ollama).
+.SH INTERACTIVE KEYBINDINGS
+.TP
+.B q
+Quit the dashboard.
+.TP
+.B k
+Kill the selected active session.
+.TP
+.B x
+Purge/kill all active sleep-blocking sessions.
+.TP
+.B a
+Ignore (quietly filter out) a module from the auxiliary dashboard.
+.TP
+.B r
+Restore an ignored auxiliary module.
+.TP
+.B Up / Down / Mouse Wheel
+Select and navigate between active sessions in the registry.
+.TP
+.B Enter
+Inspect details of the selected session (e.g., agent, PID, UUID, start time, reason).
+.SH EXAMPLES
+Open the live dashboard:
+.IP
+.B t69
+.SH SEE ALSO
+.BR 6ix9ine (1)
