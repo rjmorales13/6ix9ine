@@ -57,7 +57,13 @@ def filter_file_path() -> Path:
 
 
 def thermal_threshold() -> float:
+    # Cutout fires at/above this temperature; the daemon releases all sessions.
     return float(os.environ.get("SIXNINE_THERMAL_THRESHOLD", "85"))
+
+
+def thermal_alert_threshold() -> float:
+    # Warn before cutout at/above this temperature (display + advisory only).
+    return float(os.environ.get("SIXNINE_THERMAL_ALERT", "70"))
 
 
 def idle_timeout_minutes() -> int:
