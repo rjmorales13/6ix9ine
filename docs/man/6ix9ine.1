@@ -1,0 +1,100 @@
+.TH 6ix9ine 1 "July 2026" "6ix9ine v1.0.0" "6ix9ine CLI Manual"
+.SH NAME
+6ix9ine \- keeps your Mac awake only while work is happening, then lets it sleep
+.SH SYNOPSIS
+.B 6ix9ine
+[\fB\-\-version\fR] [\fB\-h\fR] \fIcommand\fR [\fIargs...\fR]
+.SH DESCRIPTION
+.B 6ix9ine
+is a background utility that monitors active work sessions from AI agents and other processes, keeping your macOS system awake (even in closed-lid clamshell mode on docked Macs) while tasks are running, and automatically restoring normal sleep behavior as soon as all sessions complete.
+It acts as a reference-counted sleep-blocking controller using a three-tier model: client hooks/commands, a user-level policy daemon, and a minimal root-privileged sleep helper.
+.SH COMMANDS
+.TP
+.B acquire \fIsession_id\fR [\fB\-\-tool\fR \fItool_name\fR] [\fB\-\-reason\fR \fIreason\fR]
+Acquire a sleep-blocking session. Increments the reference count.
+.TP
+.B release \fIsession_id\fR
+Release a sleep-blocking session. Decrements the reference count.
+.TP
+.B hold \fIsession_id\fR \fIduration\fR [\fB\-\-tool\fR \fItool_name\fR] [\fB\-\-reason\fR \fIreason\fR]
+Acquire a session with a temporary timed hold (e.g., "30m", "1h20m", or seconds).
+.TP
+.B track \fIpid\fR [\fB\-\-tool\fR \fItool_name\fR] [\fB\-\-reason\fR \fIreason\fR]
+Track a specific PID. The sleep block will automatically be released when the process terminates.
+.TP
+.B status
+Print the current active sessions, sleep blocking state, lid position, and thermal readings.
+.TP
+.B install\-hooks [\fB\-\-all\fR] [\fB\-\-agent\fR \fIagent_name\fR]
+Install agent lifecycle hooks to auto-trigger sleep blocking (e.g., Claude Code, OpenCode).
+.TP
+.B uninstall\-hooks [\fB\-\-all\fR] [\fB\-\-agent\fR \fIagent_name\fR]
+Remove agent lifecycle hooks.
+.TP
+.B setup\-privileged\-helper
+Install the root LaunchDaemon helper tool which handles low-level sleep blocking. Requires administrative privileges (sudo).
+.TP
+.B helper\-status
+Verify that the root-privileged helper LaunchDaemon is running and responsive.
+.TP
+.B uninstall\-helper
+Unload and remove the privileged helper LaunchDaemon. Requires administrative privileges (sudo).
+.TP
+.B daemon\-start
+Load and start the user-level background daemon LaunchAgent.
+.TP
+.B daemon\-stop
+Stop and unload the user-level background daemon LaunchAgent.
+.TP
+.B daemon\-restart
+Restart the user-level background daemon LaunchAgent.
+.TP
+.B daemon\-status
+Check if the user-level background daemon is running and retrieve its socket status.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show the help message and exit.
+.TP
+.B \-\-version
+Show the version string and exit.
+.SH ENVIRONMENT
+.TP
+.B SIXNINE_STATE_DIR
+Override the default directory for runtime sockets and state files (defaults to \fI~/Library/Application Support/6ix9ine\fR).
+.TP
+.B SIXNINE_THERMAL_THRESHOLD
+Specify the CPU temperature threshold in degrees Celsius (default: 85) at which sleep blocking is aborted to protect hardware.
+.TP
+.B SIXNINE_IDLE_TIMEOUT
+Idle timeout in minutes (default: 5) after which sleep blocking is automatically released if no CPU activity is detected.
+.TP
+.B SIXNINE_SNIFFING
+Enable or disable the process-sniffing fallback mechanism to auto-detect agents without hooks (default: true).
+.TP
+.B SIXNINE_LOG_LEVEL
+Specify the logging level for the daemon and helper (e.g., debug, info, warning, error; default: info).
+.SH EXAMPLES
+Start a manual hold for 45 minutes:
+.IP
+.B 6ix9ine hold my-build 45m --tool manual --reason "compiling source code"
+.PP
+Track an active background task with process ID 12345:
+.IP
+.B 6ix9ine track 12345 --tool manual --reason "running overnight migrations"
+.PP
+Check daemon and helper status:
+.IP
+.B 6ix9ine status
+.SH TROUBLESHOOTING
+If the daemon is offline, start it with:
+.IP
+.B 6ix9ine daemon-start
+.PP
+If you encounter "Permission denied" errors during setup, ensure you run:
+.IP
+.B 6ix9ine setup-privileged-helper
+with an admin account. You will be prompted for your macOS password.
+.SH SEE ALSO
+.BR t69 (1),
+.BR pmset (1)
