@@ -180,6 +180,63 @@ def cmd_uninstall_hooks(args, agent_modules: Optional[dict] = None) -> tuple[dic
 
 def cmd_daemon_start(run: Deps = None) -> tuple[dict, int]:
     run = run or subprocess.run
+    
+    # Generate LaunchAgent plist if it doesn't exist
+    if not shared.DAEMON_PLIST_PATH.exists():
+        if getattr(sys, "frozen", False):
+            # Running as a compiled binary
+            cli_dir = Path(sys.executable).parent
+            daemon_bin = cli_dir / "com.rjmorales.6ix9ine.daemon"
+            if not daemon_bin.exists():
+                import shutil
+                daemon_path_str = shutil.which("com.rjmorales.6ix9ine.daemon")
+                if daemon_path_str:
+                    daemon_bin = Path(daemon_path_str)
+                else:
+                    daemon_bin = Path("/usr/local/bin/com.rjmorales.6ix9ine.daemon")
+            program_arguments = [str(daemon_bin)]
+            working_dir = str(shared.state_dir())
+        else:
+            # Running as Python script
+            python_exe = sys.executable
+            cli_dir = Path(__file__).resolve().parent
+            daemon_py = cli_dir / "daemon.py"
+            program_arguments = [python_exe, str(daemon_py)]
+            working_dir = str(cli_dir)
+
+        shared.state_dir().mkdir(parents=True, exist_ok=True)
+        log_out = str(shared.state_dir() / "daemon.log")
+        log_err = str(shared.state_dir() / "daemon.err.log")
+
+        args_str = "\n".join(f"\t\t<string>{arg}</string>" for arg in program_arguments)
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>{shared.DAEMON_BUNDLE_ID}</string>
+	<key>ProgramArguments</key>
+	<array>
+{args_str}
+	</array>
+	<key>WorkingDirectory</key>
+	<string>{working_dir}</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>{log_out}</string>
+	<key>StandardErrorPath</key>
+	<string>{log_err}</string>
+</dict>
+</plist>
+"""
+        shared.DAEMON_PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shared.DAEMON_PLIST_PATH.write_text(plist_content)
+
     result = run(["launchctl", "load", str(shared.DAEMON_PLIST_PATH)], capture_output=True, text=True, check=False)
     ok = result.returncode == 0
     return {"ok": ok, "output": result.stdout or result.stderr}, (shared.EXIT_OK if ok else shared.EXIT_GENERAL_ERROR)
@@ -212,10 +269,40 @@ def cmd_daemon_status(send_request: Deps = None) -> tuple[dict, int]:
 
 def build_setup_helper_script(project_root: Optional[Path], owner_uid: int) -> str:
     project_root = project_root or Path(__file__).resolve().parent.parent
+    owner_file = shared.HELPER_INSTALL_PATH.parent / f"{shared.HELPER_BUNDLE_ID}.owner"
+
+    if getattr(sys, "frozen", False):
+        cli_dir = Path(sys.executable).parent
+        # In a Homebrew installation, sys.executable is <prefix>/bin/6ix9ine
+        # the helper binary is in the same bin/ directory, and the plist is in the prefix/ directory.
+        src_bin = cli_dir / "com.rjmorales.6ix9ine.helper"
+        src_plist = cli_dir.parent / "com.rjmorales.6ix9ine.helper.plist"
+        
+        # Fallbacks for other compiled run layouts
+        if not src_bin.exists():
+            src_bin = cli_dir / "com.rjmorales.6ix9ine.helper"
+        if not src_plist.exists():
+            src_plist = cli_dir / "com.rjmorales.6ix9ine.helper.plist"
+            if not src_plist.exists():
+                src_plist = project_root / "plists" / f"{shared.HELPER_BUNDLE_ID}.plist"
+
+        return "\n".join(
+            [
+                "set -e",
+                f'mkdir -p "{shared.HELPER_INSTALL_PATH.parent}"',
+                f'cp "{src_bin}" "{shared.HELPER_INSTALL_PATH}"',
+                f'cp "{src_plist}" "{shared.HELPER_PLIST_PATH}"',
+                f'chmod 755 "{shared.HELPER_INSTALL_PATH}"',
+                f'echo "{owner_uid}" > "{owner_file}"',
+                f'chown -R root:wheel "{shared.HELPER_INSTALL_PATH}" "{shared.HELPER_PLIST_PATH}" "{owner_file}"',
+                f'chmod 644 "{shared.HELPER_PLIST_PATH}"',
+                f'launchctl bootstrap system "{shared.HELPER_PLIST_PATH}" || launchctl load "{shared.HELPER_PLIST_PATH}"',
+            ]
+        )
+
     install_dir = f"{shared.HELPER_INSTALL_PATH}.d"
     src_files = ["helper.py", "shared.py", "ipc.py", "thermal_monitor.py"]
     copy_cmds = "\n".join(f'cp "{project_root / "bin" / name}" "{install_dir}/{name}"' for name in src_files)
-    owner_file = shared.HELPER_INSTALL_PATH.parent / f"{shared.HELPER_BUNDLE_ID}.owner"
     launcher_py = f"{install_dir}/_launcher.py"
     launcher_py_body = (
         f'import sys; sys.path.insert(0, "{install_dir}")\n'
