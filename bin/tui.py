@@ -202,10 +202,11 @@ def build_topline_meta(state: dict, clock: Optional[str] = None) -> Text:
 
 
 # Thermal band colors for the dashboard, mirroring the CLI's ANSI palette.
+# Band boundaries come from shared.THERMAL_*_MAX (single source of truth).
 _THERMAL_COLORS = [
-    (95.0, "#ff5b5b", "CRIT"),  # critical
-    (80.0, "#ff8c42", "HOT"),  # hot
-    (60.0, "#e8c84a", "WARM"),  # warm
+    (shared.THERMAL_HOT_MAX, "#ff5b5b", "CRIT"),  # critical
+    (shared.THERMAL_WARM_MAX, "#ff8c42", "HOT"),  # hot
+    (shared.THERMAL_COOL_MAX, "#e8c84a", "WARM"),  # warm
     (0.0, "#4ec973", "COOL"),  # cool
 ]
 

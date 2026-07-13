@@ -56,6 +56,22 @@ def test_cmd_thermal_status_critical_cutout_output(capsys):
     assert "TRIGGERED" in out
 
 
+def test_cmd_thermal_status_alert_advisory_when_warm(capsys):
+    # SIXNINE_THERMAL_ALERT (default 70) is wired into the advisory line.
+    send = _fake_send(_status_response({"current_temp": 75.0, "peak_temp": 75.0, "cutout_threshold": 85.0, "cutout_fired": False}))
+    cli.cmd_thermal_status(SimpleNamespace(), send_request=send)
+    out = capsys.readouterr().out
+    assert "Alert" in out
+    assert "approaching cutout" in out
+
+
+def test_cmd_thermal_status_no_alert_when_cool(capsys):
+    send = _fake_send(_status_response({"current_temp": 52.0, "peak_temp": 68.0, "cutout_threshold": 85.0, "cutout_fired": False}))
+    cli.cmd_thermal_status(SimpleNamespace(), send_request=send)
+    out = capsys.readouterr().out
+    assert "Alert" not in out
+
+
 def test_cmd_thermal_status_unknown_when_no_reading(capsys):
     send = _fake_send(_status_response({"current_temp": None, "peak_temp": 0.0, "cutout_threshold": 85.0, "cutout_fired": False}))
     response, exit_code = cli.cmd_thermal_status(SimpleNamespace(), send_request=send)
@@ -156,6 +172,13 @@ def _make_daemon_for_thermal(tmp_path, lid_state, temperature):
         return {"ok": True, "sleep_blocked": payload.get("params", {}).get("blocked", False)}
 
     notify_calls = []
+    # Isolate agent scanning to a throwaway dir so tick() never picks up the
+    # dev machine's real ~/.claude/sessions (matches every other Daemon test).
+    def record_notify(reg, therm):
+        # Snapshot the agents at notify time so we can prove the summary is
+        # emitted BEFORE release_all() clears the registry (the old "agents: none" bug).
+        notify_calls.append((reg, therm, sorted({s.agent for s in reg.sessions().values()})))
+
     daemon = Daemon(
         registry=session_registry.SessionRegistry(),
         lid=lid_monitor.LidMonitor(),
@@ -163,9 +186,10 @@ def _make_daemon_for_thermal(tmp_path, lid_state, temperature):
         state_file=tmp_path / "state.json",
         transport=fake_transport,
         play_chime_fn=lambda: None,
-        notify_summary_fn=lambda *a, **k: notify_calls.append((a, k)),
+        notify_summary_fn=record_notify,
         pid_exists_fn=lambda pid: True,
         read_lid_state_fn=lambda: lid_state,
+        agent_scan_dirs={"claude": tmp_path / "sessions"},
     )
     return daemon, helper_calls, notify_calls
 
@@ -181,6 +205,9 @@ async def test_daemon_releases_on_cutout_with_lid_open(tmp_path):
     assert daemon.thermal.cutout_fired is True
     # Lid open => user-facing notification that sleep protection was released.
     assert len(notify_calls) == 1
+    # The summary must list the real agent, not "agents: none" (regression for
+    # the notify-before-release ordering fix).
+    assert "claude" in notify_calls[0][2]
 
 
 @pytest.mark.asyncio

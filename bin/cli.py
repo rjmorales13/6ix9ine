@@ -22,19 +22,17 @@ ANSI_ORANGE = "\033[38;5;208m"
 ANSI_DIM = "\033[2m"
 ANSI_BOLD = "\033[1m"
 
-# Thermal state bands, mapping a temperature (C) to a label + color.
-THERMAL_COOL_MAX = 60.0
-THERMAL_WARM_MAX = 80.0
-THERMAL_HOT_MAX = 95.0
-
+# Thermal color-band boundaries live in shared (single source of truth, also
+# used by the dashboard). The CLI renders them with ANSI colors; the dashboard
+# uses hex.
 
 def thermal_label(temp: float) -> tuple[str, str]:
     """Return (LABEL, ANSI_COLOR) for a CPU temperature in Celsius."""
-    if temp >= THERMAL_HOT_MAX:
+    if temp >= shared.THERMAL_HOT_MAX:
         return "CRITICAL", ANSI_RED
-    if temp >= THERMAL_WARM_MAX:
+    if temp >= shared.THERMAL_WARM_MAX:
         return "HOT", ANSI_ORANGE
-    if temp >= THERMAL_COOL_MAX:
+    if temp >= shared.THERMAL_COOL_MAX:
         return "WARM", ANSI_YELLOW
     return "COOL", ANSI_GREEN
 
@@ -189,6 +187,9 @@ def cmd_thermal_status(args, send_request: Deps = None) -> tuple[dict, int]:
             lines.append(_colored("  Cutout: TRIGGERED — all sessions released", ANSI_RED))
         else:
             lines.append(_colored("  Cutout: Not triggered", ANSI_GREEN))
+            alert = shared.thermal_alert_threshold()
+            if current is not None and float(current) >= alert:
+                lines.append(_colored(f"  Alert: approaching cutout (warn at {alert:g}°C)", ANSI_YELLOW))
 
     print("\n".join(lines))
     return {"ok": True}, shared.EXIT_OK
