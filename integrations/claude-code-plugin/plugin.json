@@ -1,0 +1,12 @@
+{
+  "name": "6ix9ine",
+  "version": "1.0.0",
+  "description": "Sleep-blocking session manager for Claude Code",
+  "author": "rjmorales13",
+  "license": "MIT",
+  "main": "index.ts",
+  "minClaudeVersion": "0.2.0",
+  "capabilities": {
+    "hooks": ["UserPromptSubmit", "Stop", "PreToolUse"]
+  }
+}

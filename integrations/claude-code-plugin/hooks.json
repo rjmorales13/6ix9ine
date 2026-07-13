@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "plugin": "6ix9ine",
+  "hooks": [
+    {
+      "event": "UserPromptSubmit",
+      "handler": "UserPromptSubmit",
+      "description": "Acquire sleep-blocking session when user submits a prompt"
+    },
+    {
+      "event": "Stop",
+      "handler": "Stop",
+      "description": "Release sleep-blocking session when Claude finishes a turn"
+    },
+    {
+      "event": "PreToolUse",
+      "handler": "PreToolUse",
+      "description": "Track background command PIDs for Bash tool invocations"
+    }
+  ]
+}
