@@ -294,10 +294,17 @@ class Daemon:
         if temperature is None:
             return
         crossed = self.thermal.observe(temperature)
-        if crossed and self.lid.state == "closed":
-            self.registry.release_all()
-            await self._reconcile_sleep_block()
-            self._persist_state()
+        if not crossed:
+            return
+        # The cutout threshold was crossed: release every session so the Mac
+        # can sleep and cool down, regardless of lid position. (Previously
+        # this only fired while the lid was closed, leaving sleep blocked on
+        # a hot open-docked Mac.)
+        self.registry.release_all()
+        if self.lid.state == "open":
+            self._notify_summary(self.registry, self.thermal)
+        await self._reconcile_sleep_block()
+        self._persist_state()
 
     async def run_forever(self) -> None:
         self._sniff_agents()
