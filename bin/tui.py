@@ -189,10 +189,45 @@ def build_topline_meta(state: dict, clock: Optional[str] = None) -> Text:
     holds = len(state.get("holds", []) or [])
     lid = state.get("lid", "unknown")
     clock = clock or datetime.now().strftime("%H:%M:%S")
-    return Text(
-        f"{sessions} sessions · {holds} holds · lid {lid} · {clock}",
+    text = Text(
+        f"{sessions} sessions · {holds} holds · lid {lid}",
         style=tui_theme.TEXT_DIM,
     )
+    thermal = build_thermal_meta(state)
+    if thermal is not None:
+        text.append(" · ")
+        text.append_text(thermal)
+    text.append(f" · {clock}", style=tui_theme.TEXT_DIM)
+    return text
+
+
+# Thermal band colors for the dashboard, mirroring the CLI's ANSI palette.
+_THERMAL_COLORS = [
+    (95.0, "#ff5b5b", "CRIT"),  # critical
+    (80.0, "#ff8c42", "HOT"),  # hot
+    (60.0, "#e8c84a", "WARM"),  # warm
+    (0.0, "#4ec973", "COOL"),  # cool
+]
+
+
+def build_thermal_meta(state: dict) -> Optional[Text]:
+    """Compact thermal chip for the dashboard top bar, or None when unknown."""
+    thermal = state.get("thermal", {}) or {}
+    temp = thermal.get("current_temp")
+    if temp is None:
+        return None
+    color = "#9aa3ad"
+    for floor, band_color, _ in _THERMAL_COLORS:
+        if temp >= floor:
+            color = band_color
+            break
+    peak = thermal.get("peak_temp")
+    label = f"🌡 {temp:g}°C"
+    if peak is not None:
+        label += f" (peak {peak:g}°C)"
+    if thermal.get("cutout_fired"):
+        label += " ⚠ cutout"
+    return Text(label, style=color)
 
 
 def sleep_blocked_since(state: dict) -> Optional[str]:
