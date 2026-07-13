@@ -8,6 +8,8 @@ venv/
 .idea/
 node_modules/
 coverage/
+.coverage
+.coverage.*
 *.sock
 state.json
 .claude/settings.local.json
