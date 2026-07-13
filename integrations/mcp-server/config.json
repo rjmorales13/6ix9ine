@@ -1,0 +1,49 @@
+{
+  "name": "6ix9ine-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for 6ix9ine sleep-blocking daemon — allows any MCP-compatible agent to acquire/release sleep sessions",
+  "author": "rjmorales13",
+  "license": "MIT",
+  "protocol": {
+    "version": "2025-03-26",
+    "transport": ["stdio", "tcp"],
+    "encoding": "json-rpc"
+  },
+  "tools": [
+    {
+      "name": "6ix9ine_acquire",
+      "description": "Acquire a sleep-blocking session",
+      "required": ["session_id"]
+    },
+    {
+      "name": "6ix9ine_release",
+      "description": "Release a sleep-blocking session",
+      "required": ["session_id"]
+    },
+    {
+      "name": "6ix9ine_status",
+      "description": "Query daemon status",
+      "required": []
+    },
+    {
+      "name": "6ix9ine_hold",
+      "description": "Add a timed hold",
+      "required": ["reason", "duration"]
+    }
+  ],
+  "resources": [
+    {
+      "uri": "6ix9ine://status",
+      "name": "Daemon Status",
+      "mimeType": "application/json"
+    }
+  ],
+  "config": {
+    "cliPath": "~/.local/bin/6ix9ine",
+    "cliTimeout": 5000,
+    "idleTimeout": 300000,
+    "autoDetect": true,
+    "host": "localhost",
+    "port": 0
+  }
+}
