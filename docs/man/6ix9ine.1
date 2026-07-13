@@ -68,6 +68,12 @@ Specify the CPU temperature threshold in degrees Celsius (default: 85) at which 
 .TP
 .B SIXNINE_IDLE_TIMEOUT
 Idle timeout in minutes (default: 5) after which sleep blocking is automatically released if no CPU activity is detected.
+.TP
+.B SIXNINE_SNIFFING
+Enable or disable the process-sniffing fallback mechanism to auto-detect agents without hooks (default: true).
+.TP
+.B SIXNINE_LOG_LEVEL
+Specify the logging level for the daemon and helper (e.g., debug, info, warning, error; default: info).
 .SH EXAMPLES
 Start a manual hold for 45 minutes:
 .IP
