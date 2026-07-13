@@ -7,6 +7,7 @@ venv/
 .DS_Store
 .idea/
 node_modules/
+coverage/
 *.sock
 state.json
 .claude/settings.local.json
