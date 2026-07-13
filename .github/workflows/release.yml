@@ -1,0 +1,119 @@
+name: Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Binary
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller psutil textual
+
+      - name: Inject version and build binaries
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          # Inject version into shared.py
+          python -c "import re, pathlib; p = pathlib.Path('bin/shared.py'); c = p.read_text(); p.write_text(re.sub(r'VERSION = \"[^\"]+\"', f'VERSION = \"{TAG_VERSION}\"', c))"
+          
+          # Build each script using PyInstaller with strip
+          pyinstaller --onefile --strip --clean --name 6ix9ine bin/cli.py
+          pyinstaller --onefile --strip --clean --name t69 bin/tui.py
+          pyinstaller --onefile --strip --clean --name com.rjmorales.6ix9ine.daemon bin/daemon.py
+          pyinstaller --onefile --strip --clean --name com.rjmorales.6ix9ine.helper bin/helper.py
+          
+          # Package binaries and resources
+          mkdir -p release
+          cp dist/6ix9ine release/
+          cp dist/t69 release/
+          cp dist/com.rjmorales.6ix9ine.daemon release/
+          cp dist/com.rjmorales.6ix9ine.helper release/
+          cp -r docs/man release/man
+          cp plists/com.rjmorales.6ix9ine.helper.plist release/
+          
+          TARBALL="6ix9ine-v${TAG_VERSION}-${{ matrix.arch }}.tar.gz"
+          tar -czf "$TARBALL" -C release 6ix9ine t69 com.rjmorales.6ix9ine.daemon com.rjmorales.6ix9ine.helper man com.rjmorales.6ix9ine.helper.plist
+          shasum -a 256 "$TARBALL" > "${TARBALL}.sha256"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.arch }}
+          path: |
+            6ix9ine-v*-${{ matrix.arch }}.tar.gz*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts directory
+        run: |
+          mkdir -p dist
+          find artifacts -type f -name "*.tar.gz*" -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew formula SHA256 and URL
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          SHA_ARM64=$(cat dist/6ix9ine-v${TAG_VERSION}-arm64.tar.gz.sha256 | cut -d ' ' -f 1)
+          
+          python -c "
+          import re, pathlib
+          p = pathlib.Path('Formula/6ix9ine.rb')
+          content = p.read_text()
+          content = re.sub(
+              r'url \"[^\"]+\"',
+              f'url \"https://github.com/rjmorales13/6ix9ine/releases/download/v{TAG_VERSION}/6ix9ine-v{TAG_VERSION}-arm64.tar.gz\"',
+              content
+          )
+          content = re.sub(r'sha256 \"[^\"]+\"', f'sha256 \"{SHA_ARM64}\"', content)
+          content = re.sub(r'version \"[^\"]+\"', f'version \"{TAG_VERSION}\"', content)
+          p.write_text(content)
+          "
+          
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add Formula/6ix9ine.rb
+          git commit -m "chore(release): Auto-update Homebrew formula for v${TAG_VERSION}"
+          git push origin main
