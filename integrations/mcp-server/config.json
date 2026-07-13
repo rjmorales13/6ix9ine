@@ -1,0 +1,17 @@
+{
+  "name": "6ix9ine-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for 6ix9ine sleep-blocking daemon",
+  "author": "rjmorales13",
+  "license": "MIT",
+  "protocol": {
+    "version": "2025-03-26",
+    "transport": ["stdio", "tcp"]
+  },
+  "tools": [
+    "6ix9ine_acquire",
+    "6ix9ine_release",
+    "6ix9ine_status",
+    "6ix9ine_hold"
+  ]
+}
