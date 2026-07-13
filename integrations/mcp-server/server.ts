@@ -1,132 +1,72 @@
-import { execSync } from "node:child_process"
+import { createServer } from "node:net"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { homedir } from "node:os"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
+import { acquire, release, status, hold, isDaemonReachable, daemonSocketPath } from "../shared/daemon-client"
 
-const HOME = homedir()
-const DEFAULT_CLI_PATH = join(HOME, ".local", "bin", "6ix9ine")
-const CLAUDE_SESSIONS_DIR = join(HOME, ".claude", "sessions")
-const DAEMON_SOCKET = join(HOME, "Library", "Application Support", "6ix9ine", "cli.sock")
-
-const CLI_PATH = process.env.SIXNINE_CLI_PATH || DEFAULT_CLI_PATH
 const IDLE_TIMEOUT = parseInt(process.env.SIXNINE_MCP_IDLE_TIMEOUT || "300000", 10)
 const AUTO_DETECT = (process.env.SIXNINE_AUTO_DETECT || "true") === "true"
-
-const MCP_PROTOCOL_VERSION = "2025-03-26"
+const CLAUDE_SESSIONS_DIR = join(homedir(), ".claude", "sessions")
+const PROTOCOL_VERSION = "2025-03-26"
 
 interface SessionEntry {
   sessionId: string
-  clientId: string
   acquiredAt: number
-  lastActivity: number
+  clientId: string
 }
 
-interface ClientConnection {
+interface ClientState {
   id: string
   sessions: Map<string, SessionEntry>
 }
 
-interface JsonRpcMessage {
-  jsonrpc: string
-  id?: string | number
-  method?: string
-  params?: Record<string, unknown>
-  result?: unknown
-  error?: { code: number; message: string; data?: unknown }
-}
-
-interface StdioTransport {
-  onMessage: (msg: JsonRpcMessage) => void
-  send: (msg: JsonRpcMessage) => void
-  close: () => void
-}
-
-const CLIENTS = new Map<string, ClientConnection>()
+const CLIENTS = new Map<string, ClientState>()
 let nextClientId = 1
-let nextRequestId = 1
 
-function runCli(args: string[], timeout: number = 5000): string {
-  try {
-    return execSync(`${CLI_PATH} ${args.join(" ")}`, {
-      timeout,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim()
-  } catch (err) {
-    throw new Error(`6ix9ine CLI error: ${(err as Error).message}`)
-  }
+function sendJson(write: (s: string) => void, msg: Record<string, unknown>): void {
+  write(JSON.stringify(msg) + "\n")
 }
 
-function acquireSession(clientId: string, sessionId: string, reason: string): void {
-  runCli(["acquire", sessionId, "--tool", "claude", "--reason", reason.slice(0, 80)])
-  const client = CLIENTS.get(clientId)
-  if (client) {
-    client.sessions.set(sessionId, {
-      sessionId,
-      clientId,
-      acquiredAt: Date.now(),
-      lastActivity: Date.now(),
-    })
-  }
+function rpcError(code: number, message: string, id?: string | number | null): Record<string, unknown> {
+  const msg: Record<string, unknown> = { jsonrpc: "2.0", error: { code, message } }
+  if (id !== undefined && id !== null) msg.id = id
+  return msg
 }
 
-function releaseSession(clientId: string, sessionId: string): void {
-  runCli(["release", sessionId])
-  const client = CLIENTS.get(clientId)
-  if (client) {
-    client.sessions.delete(sessionId)
-  }
+function rpcResult(id: string | number, result: unknown): Record<string, unknown> {
+  return { jsonrpc: "2.0", id, result }
 }
 
-function releaseAllForClient(clientId: string): number {
-  const client = CLIENTS.get(clientId)
-  if (!client) return 0
-  const count = client.sessions.size
-  for (const sessionId of client.sessions.keys()) {
-    try {
-      runCli(["release", sessionId])
-    } catch {
-      // best-effort release on disconnect
-    }
-  }
-  client.sessions.clear()
-  return count
+function rpcNotification(method: string, params?: Record<string, unknown>): Record<string, unknown> {
+  return { jsonrpc: "2.0", method, ...(params ? { params } : {}) }
 }
 
 function scanClaudeSessions(): Array<{ id: string; reason: string }> {
   if (!existsSync(CLAUDE_SESSIONS_DIR)) return []
+  const results: Array<{ id: string; reason: string }> = []
   try {
-    const files = readdirSync(CLAUDE_SESSIONS_DIR).filter((f) => f.endsWith(".json"))
-    const sessions: Array<{ id: string; reason: string }> = []
-    for (const file of files) {
+    for (const f of readdirSync(CLAUDE_SESSIONS_DIR)) {
+      if (!f.endsWith(".json")) continue
       try {
-        const data = JSON.parse(readFileSync(join(CLAUDE_SESSIONS_DIR, file), "utf-8"))
+        const data = JSON.parse(readFileSync(join(CLAUDE_SESSIONS_DIR, f), "utf-8"))
         if (data.status === "busy" && data.sessionId) {
-          sessions.push({ id: data.sessionId, reason: data.name || "auto-detected" })
+          results.push({ id: data.sessionId, reason: data.name || "auto-detected" })
         }
       } catch {
-        continue
+        // skip unreadable session files
       }
     }
-    return sessions
   } catch {
-    return []
+    // sessions dir inaccessible
   }
+  return results
 }
 
-function createError(code: number, message: string, data?: unknown): JsonRpcMessage {
-  return { jsonrpc: "2.0", error: { code, message, data } }
-}
-
-function createResult(id: string | number | undefined, result: unknown): JsonRpcMessage {
-  return { jsonrpc: "2.0", id, result }
-}
-
-function handleInitialize(params: Record<string, unknown>): JsonRpcMessage {
-  return createResult((params as { requestId?: string | number }).requestId, {
-    protocolVersion: MCP_PROTOCOL_VERSION,
+function handleInitialize(id: string | number): Record<string, unknown> {
+  return rpcResult(id, {
+    protocolVersion: PROTOCOL_VERSION,
     capabilities: {
-      tools: { listChanged: true },
+      tools: {},
       resources: { subscribe: true },
     },
     serverInfo: {
@@ -136,360 +76,325 @@ function handleInitialize(params: Record<string, unknown>): JsonRpcMessage {
   })
 }
 
-function handleToolsList(clientId: string): JsonRpcMessage {
-  const tools = [
-    {
-      name: "6ix9ine_acquire",
-      description: "Acquire a sleep-blocking session — keeps macOS awake while the agent is working.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          session_id: { type: "string", description: "Unique session identifier (UUID)" },
-          reason: { type: "string", description: "Brief work description (max 80 chars)" },
-        },
-        required: ["session_id"],
-      },
-    },
-    {
-      name: "6ix9ine_release",
-      description: "Release a previously acquired session — allows macOS sleep when no sessions remain.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          session_id: { type: "string", description: "Session identifier to release" },
-        },
-        required: ["session_id"],
-      },
-    },
-    {
-      name: "6ix9ine_status",
-      description: "Query daemon status: active sessions, holds, sleep state, lid position.",
-      inputSchema: {
-        type: "object",
-        properties: {},
-      },
-    },
-    {
-      name: "6ix9ine_hold",
-      description: "Add a timed hold — blocks sleep for a fixed duration.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          reason: { type: "string", description: "Reason for the hold" },
-          duration: {
-            type: "string",
-            description: "Duration (e.g., '30m', '2h', '45s')",
-          },
-        },
-        required: ["reason", "duration"],
-      },
-    },
-  ]
-  return createResult(nextRequestId++, { tools })
-}
-
-function handleToolCall(clientId: string, params: Record<string, unknown>): JsonRpcMessage {
-  const name = params.name as string
-  const args = (params.arguments || {}) as Record<string, unknown>
-  const toolCallId = params.id as string || String(nextRequestId++)
-
-  try {
-    switch (name) {
-      case "6ix9ine_acquire": {
-        const sessionId = args.session_id as string
-        if (!sessionId) {
-          return createResult(toolCallId, {
-            content: [{ type: "text", text: "Error: session_id is required" }],
-            isError: true,
-          })
-        }
-        const reason = (args.reason as string) || "mcp acquire"
-        acquireSession(clientId, sessionId, reason)
-        return createResult(toolCallId, {
-          content: [{ type: "text", text: `Session ${sessionId} acquired (sleep blocked)` }],
-        })
-      }
-
-      case "6ix9ine_release": {
-        const sessionId = args.session_id as string
-        if (!sessionId) {
-          return createResult(toolCallId, {
-            content: [{ type: "text", text: "Error: session_id is required" }],
-            isError: true,
-          })
-        }
-        releaseSession(clientId, sessionId)
-        return createResult(toolCallId, {
-          content: [{ type: "text", text: `Session ${sessionId} released` }],
-        })
-      }
-
-      case "6ix9ine_status": {
-        const output = runCli(["status"])
-        return createResult(toolCallId, {
-          content: [{ type: "text", text: output }],
-        })
-      }
-
-      case "6ix9ine_hold": {
-        const reason = args.reason as string
-        const duration = args.duration as string
-        if (!reason || !duration) {
-          return createResult(toolCallId, {
-            content: [{ type: "text", text: "Error: reason and duration are required" }],
-            isError: true,
-          })
-        }
-        runCli(["hold", "--for", duration, "--reason", reason])
-        return createResult(toolCallId, {
-          content: [{ type: "text", text: `Hold acquired: ${reason} (${duration})` }],
-        })
-      }
-
-      default:
-        return createResult(toolCallId, {
-          content: [{ type: "text", text: `Unknown tool: ${name}` }],
-          isError: true,
-        })
-    }
-  } catch (err) {
-    return createResult(toolCallId, {
-      content: [{ type: "text", text: `Error: ${(err as Error).message}` }],
-      isError: true,
-    })
-  }
-}
-
-function handleResourcesList(): JsonRpcMessage {
-  return createResult(nextRequestId++, {
-    resources: [
+function handleToolList(id: string | number): Record<string, unknown> {
+  return rpcResult(id, {
+    tools: [
       {
-        uri: "6ix9ine://status",
-        name: "Daemon Status",
-        description: "Current daemon state with active sessions and sleep status",
-        mimeType: "application/json",
+        name: "6ix9ine_acquire",
+        description: "Acquire a sleep-blocking session via 6ix9ine daemon",
+        inputSchema: {
+          type: "object",
+          properties: {
+            session_id: { type: "string", description: "Unique session identifier (UUID)" },
+            reason: { type: "string", description: "Work description (max 80 chars)" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
+        name: "6ix9ine_release",
+        description: "Release a previously acquired sleep-blocking session",
+        inputSchema: {
+          type: "object",
+          properties: {
+            session_id: { type: "string", description: "Session identifier to release" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
+        name: "6ix9ine_status",
+        description: "Query 6ix9ine daemon status (sessions, holds, sleep state)",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "6ix9ine_hold",
+        description: "Add a timed hold blocking sleep for a fixed duration",
+        inputSchema: {
+          type: "object",
+          properties: {
+            reason: { type: "string", description: "Reason for the hold" },
+            duration: { type: "string", description: "Duration e.g. '30m', '2h', '45s'" },
+          },
+          required: ["reason", "duration"],
+        },
       },
     ],
   })
 }
 
-function handleResourceRead(uri: string): JsonRpcMessage {
-  if (uri === "6ix9ine://status") {
-    try {
-      const output = runCli(["status"])
-      return createResult(nextRequestId++, {
-        contents: [
-          {
-            uri,
-            mimeType: "application/json",
-            text: output,
-          },
-        ],
-      })
-    } catch (err) {
-      return createError(-32603, `Failed to read resource: ${(err as Error).message}`)
-    }
-  }
-  return createError(-32602, `Unknown resource: ${uri}`)
-}
-
-function handleNotification(clientId: string, method: string, params: Record<string, unknown>): void {
-  switch (method) {
-    case "notifications/initialized":
-      if (AUTO_DETECT) {
-        const detected = scanClaudeSessions()
-        for (const session of detected) {
-          acquireSession(clientId, session.id, session.reason)
+async function handleToolCall(
+  id: string | number,
+  name: string,
+  args: Record<string, unknown>,
+  clientId: string
+): Promise<Record<string, unknown>> {
+  try {
+    switch (name) {
+      case "6ix9ine_acquire": {
+        const sessionId = args.session_id as string
+        if (!sessionId) {
+          return rpcResult(id, { content: [{ type: "text", text: "session_id is required" }], isError: true })
         }
+        const reason = (args.reason as string) || "mcp acquire"
+        const resp = await acquire(sessionId, reason)
+        if (!resp.ok) {
+          return rpcResult(id, { content: [{ type: "text", text: `daemon error: ${resp.error}` }], isError: true })
+        }
+        const client = CLIENTS.get(clientId)
+        if (client) {
+          client.sessions.set(sessionId, { sessionId, acquiredAt: Date.now(), clientId })
+        }
+        return rpcResult(id, { content: [{ type: "text", text: `acquired ${sessionId} (sleep blocked)` }] })
       }
-      break
 
-    case "notifications/cancelled":
-      // no-op: MCP protocol allows servers to ignore cancellation
-      break
+      case "6ix9ine_release": {
+        const sessionId = args.session_id as string
+        if (!sessionId) {
+          return rpcResult(id, { content: [{ type: "text", text: "session_id is required" }], isError: true })
+        }
+        const resp = await release(sessionId)
+        if (!resp.ok && resp.error !== "session not found") {
+          return rpcResult(id, { content: [{ type: "text", text: `daemon error: ${resp.error}` }], isError: true })
+        }
+        const client = CLIENTS.get(clientId)
+        if (client) client.sessions.delete(sessionId)
+        return rpcResult(id, { content: [{ type: "text", text: `released ${sessionId}` }] })
+      }
+
+      case "6ix9ine_status": {
+        const resp = await status()
+        return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(resp, null, 2) }] })
+      }
+
+      case "6ix9ine_hold": {
+        const reasonVal = args.reason as string
+        const durationVal = args.duration as string
+        if (!reasonVal || !durationVal) {
+          return rpcResult(id, { content: [{ type: "text", text: "reason and duration are required" }], isError: true })
+        }
+        const resp = await hold(durationVal, reasonVal)
+        if (!resp.ok) {
+          return rpcResult(id, { content: [{ type: "text", text: `daemon error: ${resp.error}` }], isError: true })
+        }
+        return rpcResult(id, { content: [{ type: "text", text: `hold acquired: ${reasonVal} (${durationVal})` }] })
+      }
+
+      default:
+        return rpcResult(id, { content: [{ type: "text", text: `unknown tool: ${name}` }], isError: true })
+    }
+  } catch (err) {
+    return rpcResult(id, { content: [{ type: "text", text: `internal error: ${(err as Error).message}` }], isError: true })
   }
 }
 
-function handleMessage(clientId: string, msg: JsonRpcMessage): JsonRpcMessage | null {
+function handleResourceList(id: string | number): Record<string, unknown> {
+  return rpcResult(id, {
+    resources: [
+      {
+        uri: `file://${daemonSocketPath()}`,
+        name: "6ix9ine Daemon Socket",
+        description: "Unix domain socket path for the 6ix9ine daemon",
+        mimeType: "application/octet-stream",
+      },
+    ],
+  })
+}
+
+async function handleMessage(
+  msg: Record<string, unknown>,
+  clientId: string
+): Promise<Record<string, unknown> | null> {
   if (msg.jsonrpc !== "2.0") {
-    return createError(-32600, "Invalid JSON-RPC: must be jsonrpc 2.0")
+    return rpcError(-32600, "invalid json-rpc: must be jsonrpc 2.0")
   }
 
-  if (!msg.method) {
-    return createError(-32600, "Invalid JSON-RPC: method required")
-  }
+  const method = msg.method as string | undefined
+  const id = (msg.id !== undefined ? msg.id : null) as string | number | null
 
-  const method = msg.method
-  const params = (msg.params || {}) as Record<string, unknown>
+  if (!method) {
+    return rpcError(-32600, "method required", id)
+  }
 
   if (method.startsWith("notifications/")) {
-    handleNotification(clientId, method, params)
+    if (method === "notifications/initialized" && AUTO_DETECT) {
+      const detected = scanClaudeSessions()
+      for (const session of detected) {
+        try {
+          await acquire(session.id, session.reason)
+          const client = CLIENTS.get(clientId)
+          if (client) {
+            client.sessions.set(session.id, { sessionId: session.id, acquiredAt: Date.now(), clientId })
+          }
+        } catch {
+          // best-effort auto-detect
+        }
+      }
+    }
     return null
+  }
+
+  if (id === null) {
+    return rpcError(-32600, "request must include id", null)
   }
 
   switch (method) {
     case "initialize":
-      return handleInitialize(params)
-
+      return handleInitialize(id)
     case "tools/list":
-      return handleToolsList(clientId)
-
-    case "tools/call":
-      return handleToolCall(clientId, params)
-
-    case "resources/list":
-      return handleResourcesList()
-
-    case "resources/read":
-      return handleResourceRead(params.uri as string)
-
-    case "resources/subscribe":
-      return createResult(msg.id, {})
-
-    case "resources/unsubscribe":
-      return createResult(msg.id, {})
-
-    default:
-      return createError(-32601, `Method not found: ${method}`)
-  }
-}
-
-function createStdioTransport(): StdioTransport {
-  const transport: StdioTransport = {
-    onMessage: () => {},
-    send: () => {},
-    close: () => {},
-  }
-
-  transport.send = (msg: JsonRpcMessage) => {
-    process.stdout.write(JSON.stringify(msg) + "\n")
-  }
-
-  transport.close = () => {
-    for (const [clientId] of CLIENTS) {
-      releaseAllForClient(clientId)
+      return handleToolList(id)
+    case "tools/call": {
+      const params = msg.params as Record<string, unknown> | undefined
+      return handleToolCall(id, (params?.name as string) || "", (params?.arguments as Record<string, unknown>) || {}, clientId)
     }
-    CLIENTS.clear()
+    case "resources/list":
+      return handleResourceList(id)
+    case "resources/read": {
+      const params = msg.params as Record<string, unknown> | undefined
+      const uri = params?.uri as string
+      if (uri && uri.startsWith("file://")) {
+        return rpcResult(id, { contents: [{ uri, mimeType: "application/octet-stream", text: daemonSocketPath() }] })
+      }
+      return rpcError(-32602, "unknown resource", id)
+    }
+    case "resources/subscribe":
+    case "resources/unsubscribe":
+      return rpcResult(id, {})
+    default:
+      return rpcError(-32601, `method not found: ${method}`, id)
   }
-
-  return transport
 }
 
-function createTcpTransport(port: number): void {
-  const net = require("node:net")
+function releaseClientSessions(clientId: string): number {
+  const client = CLIENTS.get(clientId)
+  if (!client) return 0
+  const count = client.sessions.size
+  for (const sid of client.sessions.keys()) {
+    release(sid).catch(() => {})
+  }
+  client.sessions.clear()
+  CLIENTS.delete(clientId)
+  return count
+}
 
-  const server = net.createServer((socket: { on: (arg0: string, arg1: (data: Buffer) => void) => void; write: (arg0: string) => void; end: () => void }) => {
+function createLineBuffer(onLine: (line: string) => void): (chunk: Buffer) => void {
+  let buf = ""
+  return (chunk: Buffer) => {
+    buf += chunk.toString("utf-8")
+    const lines = buf.split("\n")
+    buf = lines.pop() || ""
+    for (const line of lines) {
+      if (line.trim()) onLine(line)
+    }
+  }
+}
+
+function startStdio(): void {
+  const clientId = `stdio-${nextClientId++}`
+  CLIENTS.set(clientId, { id: clientId, sessions: new Map() })
+
+  const feed = createLineBuffer(async (line: string) => {
+    let msg: Record<string, unknown>
+    try {
+      msg = JSON.parse(line)
+    } catch {
+      sendJson((s) => process.stdout.write(s), rpcError(-32700, "parse error"))
+      return
+    }
+    try {
+      const resp = await handleMessage(msg, clientId)
+      if (resp) {
+        sendJson((s) => process.stdout.write(s), resp)
+      }
+    } catch (err) {
+      sendJson((s) => process.stdout.write(s), rpcError(-32603, (err as Error).message, msg.id as string | number | null))
+    }
+  })
+
+  process.stdin.on("data", feed)
+  process.stdin.on("end", () => {
+    const n = releaseClientSessions(clientId)
+    if (n > 0) console.error(`[6ix9ine] released ${n} session(s) on stdin close`)
+  })
+  process.on("SIGTERM", () => process.exit(0))
+  process.on("SIGINT", () => process.exit(0))
+}
+
+function startTcp(port: number): void {
+  const srv = createServer((socket) => {
     const clientId = `tcp-${nextClientId++}`
     CLIENTS.set(clientId, { id: clientId, sessions: new Map() })
-    let buffer = ""
 
-    socket.on("data", (data: Buffer) => {
-      buffer += data.toString()
-      const lines = buffer.split("\n")
-      buffer = lines.pop() || ""
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const msg = JSON.parse(line) as JsonRpcMessage
-          const response = handleMessage(clientId, msg)
-          if (response) {
-            socket.write(JSON.stringify(response) + "\n")
-          }
-        } catch {
-          const error = createError(-32700, "Parse error")
-          socket.write(JSON.stringify(error) + "\n")
+    const feed = createLineBuffer(async (line: string) => {
+      let msg: Record<string, unknown>
+      try {
+        msg = JSON.parse(line)
+      } catch {
+        sendJson((s) => socket.write(s), rpcError(-32700, "parse error"))
+        return
+      }
+      try {
+        const resp = await handleMessage(msg, clientId)
+        if (resp) {
+          sendJson((s) => socket.write(s), resp)
         }
+      } catch (err) {
+        sendJson((s) => socket.write(s), rpcError(-32603, (err as Error).message, msg.id as string | number | null))
       }
     })
 
+    socket.on("data", feed)
     socket.on("end", () => {
-      const released = releaseAllForClient(clientId)
-      CLIENTS.delete(clientId)
-      if (released > 0) {
-        console.error(`[6ix9ine] Auto-released ${released} session(s) for disconnected client ${clientId}`)
-      }
+      const n = releaseClientSessions(clientId)
+      if (n > 0) console.error(`[6ix9ine] released ${n} session(s) from tcp client ${clientId}`)
+    })
+    socket.on("error", () => {
+      releaseClientSessions(clientId)
     })
   })
 
-  server.listen(port, "localhost", () => {
-    console.error(`[6ix9ine] MCP server listening on localhost:${port}`)
+  srv.listen(port, "127.0.0.1", () => {
+    console.error(`[6ix9ine] MCP server listening on 127.0.0.1:${port}`)
   })
 
   const shutdown = () => {
-    for (const [cid] of CLIENTS) {
-      releaseAllForClient(cid)
-    }
-    CLIENTS.clear()
-    server.close()
+    for (const cid of CLIENTS.keys()) releaseClientSessions(cid)
+    srv.close()
     process.exit(0)
   }
-
   process.on("SIGTERM", shutdown)
   process.on("SIGINT", shutdown)
 }
 
-function start(): void {
-  const port = parseInt(process.env.SIXNINE_MCP_PORT || "0", 10)
-
-  if (!existsSync(CLI_PATH)) {
-    console.error(`[6ix9ine] CLI not found at ${CLI_PATH}`)
-    process.exit(1)
-  }
-
-  if (port > 0) {
-    createTcpTransport(port)
-  } else {
-    const transport = createStdioTransport()
-    const clientId = `stdio-${nextClientId++}`
-    CLIENTS.set(clientId, { id: clientId, sessions: new Map() })
-
-    let buffer = ""
-    process.stdin.on("data", (data: Buffer) => {
-      buffer += data.toString()
-      const lines = buffer.split("\n")
-      buffer = lines.pop() || ""
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const msg = JSON.parse(line) as JsonRpcMessage
-          const response = handleMessage(clientId, msg)
-          if (response) {
-            transport.send(response)
-          }
-        } catch {
-          const error = createError(-32700, "Parse error")
-          transport.send(error)
-        }
-      }
-    })
-
-    process.stdin.on("end", () => {
-      const released = releaseAllForClient(clientId)
-      CLIENTS.delete(clientId)
-      if (released > 0) {
-        console.error(`[6ix9ine] Auto-released ${released} session(s) on stdin close`)
-      }
-    })
-
-    process.on("SIGTERM", () => transport.close())
-    process.on("SIGINT", () => transport.close())
-  }
-
+function startIdleReaper(): void {
   setInterval(() => {
     const now = Date.now()
-    for (const [clientId, client] of CLIENTS) {
-      for (const [sessionId, entry] of client.sessions) {
-        if (now - entry.lastActivity > IDLE_TIMEOUT) {
-          try {
-            runCli(["release", sessionId])
-          } catch {
-            // best-effort idle cleanup
-          }
-          client.sessions.delete(sessionId)
+    for (const [cid, client] of CLIENTS) {
+      for (const [sid, entry] of client.sessions) {
+        if (now - entry.acquiredAt > IDLE_TIMEOUT) {
+          release(sid).catch(() => {})
+          client.sessions.delete(sid)
         }
       }
     }
   }, 60000)
 }
 
-start()
+function main(): void {
+  if (!isDaemonReachable()) {
+    console.error(`[6ix9ine] daemon socket not found at ${daemonSocketPath()}`)
+    process.exit(1)
+  }
+
+  const port = parseInt(process.env.SIXNINE_MCP_PORT || "0", 10)
+
+  if (port > 0) {
+    startTcp(port)
+  } else {
+    startStdio()
+  }
+
+  startIdleReaper()
+}
+
+main()

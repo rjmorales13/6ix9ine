@@ -1,221 +1,137 @@
-import { execSync } from "node:child_process"
-import { homedir } from "node:os"
-import { join } from "node:path"
+import { acquire, release, status, hold } from "../shared/daemon-client"
 
-const HOME = homedir()
-const DEFAULT_CLI_PATH = join(HOME, ".local", "bin", "6ix9ine")
-const CLI_PATH = process.env.SIXNINE_CLI_PATH || DEFAULT_CLI_PATH
-const CLI_TIMEOUT = parseInt(process.env.SIXNINE_CLI_TIMEOUT || "5000", 10)
-
-export interface ToolDefinition {
+export interface McpTool {
   name: string
   description: string
   inputSchema: Record<string, unknown>
 }
 
-export interface ToolCallRequest {
-  name: string
-  arguments: Record<string, unknown>
-}
-
-export interface ToolCallResponse {
-  content: Array<{ type: string; text: string }>
-  isError?: boolean
-}
-
-export interface ResourceDefinition {
+export interface McpResource {
   uri: string
   name: string
   description: string
   mimeType: string
 }
 
-export interface ResourceContent {
+export interface ContentItem {
+  type: string
+  text: string
+}
+
+export interface ToolResult {
+  content: ContentItem[]
+  isError?: boolean
+}
+
+export interface ResourceContents {
   uri: string
   mimeType: string
   text: string
 }
 
-function cli(args: string[], timeout: number = CLI_TIMEOUT): string {
-  try {
-    return execSync(`${CLI_PATH} ${args.join(" ")}`, {
-      timeout,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim()
-  } catch (err) {
-    throw new Error(`6ix9ine CLI error: ${(err as Error).message}`)
-  }
-}
-
-export const TOOLS: ToolDefinition[] = [
+export const TOOLS: McpTool[] = [
   {
     name: "6ix9ine_acquire",
-    description:
-      "Acquire a sleep-blocking session — keeps macOS awake while the agent is working. Call this when starting a task that should prevent sleep.",
+    description: "Acquire a sleep-blocking session via 6ix9ine daemon",
     inputSchema: {
       type: "object",
       properties: {
-        session_id: {
-          type: "string",
-          description: "Unique session identifier (UUID v4 recommended)",
-        },
-        reason: {
-          type: "string",
-          description: "Brief description of the work being done (max 80 characters)",
-        },
+        session_id: { type: "string", description: "Unique session identifier (UUID)" },
+        reason: { type: "string", description: "Work description (max 80 chars)" },
       },
       required: ["session_id"],
     },
   },
   {
     name: "6ix9ine_release",
-    description:
-      "Release a previously acquired session. Call this when the task is complete. Sleep will unblock when all sessions are released.",
+    description: "Release a previously acquired sleep-blocking session",
     inputSchema: {
       type: "object",
       properties: {
-        session_id: {
-          type: "string",
-          description: "Session identifier to release (must match an acquired session)",
-        },
+        session_id: { type: "string", description: "Session identifier to release" },
       },
       required: ["session_id"],
     },
   },
   {
     name: "6ix9ine_status",
-    description:
-      "Query daemon status. Returns active sessions, held sessions, sleep state, lid position, and thermal readings.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
+    description: "Query 6ix9ine daemon status (sessions, holds, sleep state)",
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "6ix9ine_hold",
-    description:
-      "Add a timed hold — blocks sleep for a fixed duration regardless of agent activity. Use for long-running background work.",
+    description: "Add a timed hold blocking sleep for a fixed duration",
     inputSchema: {
       type: "object",
       properties: {
-        reason: {
-          type: "string",
-          description: "Reason for the hold (e.g., 'long build', 'data sync')",
-        },
-        duration: {
-          type: "string",
-          description:
-            "Duration string. Examples: '30m' (30 minutes), '2h' (2 hours), '45s' (45 seconds)",
-        },
+        reason: { type: "string", description: "Reason for the hold" },
+        duration: { type: "string", description: "Duration e.g. '30m', '2h', '45s'" },
       },
       required: ["reason", "duration"],
     },
   },
 ]
 
-export function handleAcquire(args: Record<string, unknown>): ToolCallResponse {
-  const sessionId = args.session_id as string
-  const reason = (args.reason as string) || "mcp acquire"
-
-  if (!sessionId) {
-    return {
-      content: [{ type: "text", text: "Error: session_id is required" }],
-      isError: true,
-    }
-  }
-
-  cli(["acquire", sessionId, "--tool", "claude", "--reason", reason.slice(0, 80)])
-  return {
-    content: [{ type: "text", text: `✓ Session acquired: ${sessionId} (sleep blocked)` }],
-  }
-}
-
-export function handleRelease(args: Record<string, unknown>): ToolCallResponse {
-  const sessionId = args.session_id as string
-
-  if (!sessionId) {
-    return {
-      content: [{ type: "text", text: "Error: session_id is required" }],
-      isError: true,
-    }
-  }
-
-  cli(["release", sessionId])
-  return {
-    content: [{ type: "text", text: `✓ Session released: ${sessionId}` }],
-  }
-}
-
-export function handleStatus(): ToolCallResponse {
-  try {
-    const output = cli(["status"])
-    return {
-      content: [{ type: "text", text: output }],
-    }
-  } catch (err) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Error querying daemon: ${(err as Error).message}. Is 6ix9ine running?`,
-        },
-      ],
-      isError: true,
-    }
-  }
-}
-
-export function handleHold(args: Record<string, unknown>): ToolCallResponse {
-  const reason = args.reason as string
-  const duration = args.duration as string
-
-  if (!reason || !duration) {
-    return {
-      content: [{ type: "text", text: "Error: reason and duration are required" }],
-      isError: true,
-    }
-  }
-
-  cli(["hold", "--for", duration, "--reason", reason])
-  return {
-    content: [{ type: "text", text: `✓ Hold acquired: "${reason}" for ${duration}` }],
-  }
-}
-
-export const RESOURCES: ResourceDefinition[] = [
+export const RESOURCES: McpResource[] = [
   {
     uri: "6ix9ine://status",
     name: "Daemon Status",
-    description: "Current daemon state with active sessions and sleep status",
+    description: "Current 6ix9ine daemon state as JSON",
     mimeType: "application/json",
   },
 ]
 
-export function handleResourceRead(uri: string): ResourceContent | null {
-  if (uri === "6ix9ine://status") {
-    try {
-      const output = cli(["status"])
-      return {
-        uri,
-        mimeType: "application/json",
-        text: output,
-      }
-    } catch {
-      return {
-        uri,
-        mimeType: "application/json",
-        text: JSON.stringify({ error: "daemon unreachable", status: "unknown" }),
-      }
-    }
+export async function handleAcquire(sessionId: string, reason: string): Promise<ToolResult> {
+  if (!sessionId) {
+    return { content: [{ type: "text", text: "session_id is required" }], isError: true }
   }
-  return null
+  const resp = await acquire(sessionId, reason || "")
+  if (!resp.ok) {
+    return { content: [{ type: "text", text: `daemon error: ${resp.error || "unknown"}` }], isError: true }
+  }
+  return { content: [{ type: "text", text: `acquired ${sessionId} (sleep blocked)` }] }
+}
+
+export async function handleRelease(sessionId: string): Promise<ToolResult> {
+  if (!sessionId) {
+    return { content: [{ type: "text", text: "session_id is required" }], isError: true }
+  }
+  const resp = await release(sessionId)
+  if (!resp.ok && resp.error !== "session not found") {
+    return { content: [{ type: "text", text: `daemon error: ${resp.error}` }], isError: true }
+  }
+  return { content: [{ type: "text", text: `released ${sessionId}` }] }
+}
+
+export async function handleStatus(): Promise<ToolResult> {
+  const resp = await status()
+  return { content: [{ type: "text", text: JSON.stringify(resp, null, 2) }] }
+}
+
+export async function handleHold(duration: string, reasonText: string): Promise<ToolResult> {
+  if (!duration || !reasonText) {
+    return { content: [{ type: "text", text: "reason and duration are required" }], isError: true }
+  }
+  const resp = await hold(duration, reasonText)
+  if (!resp.ok) {
+    return { content: [{ type: "text", text: `daemon error: ${resp.error}` }], isError: true }
+  }
+  return { content: [{ type: "text", text: `hold acquired: ${reasonText} (${duration})` }] }
+}
+
+export async function handleResourceRead(): Promise<ResourceContents> {
+  const resp = await status()
+  return {
+    uri: "6ix9ine://status",
+    mimeType: "application/json",
+    text: JSON.stringify(resp, null, 2),
+  }
 }
 
 export interface ServerCapabilities {
   protocolVersion: string
   capabilities: {
-    tools: { listChanged: boolean }
+    tools: Record<string, unknown>
     resources: { subscribe: boolean }
   }
   serverInfo: {
@@ -228,7 +144,7 @@ export function getCapabilities(): ServerCapabilities {
   return {
     protocolVersion: "2025-03-26",
     capabilities: {
-      tools: { listChanged: true },
+      tools: {},
       resources: { subscribe: true },
     },
     serverInfo: {
