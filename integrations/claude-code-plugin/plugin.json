@@ -1,22 +1,12 @@
 {
   "name": "6ix9ine",
   "version": "1.0.0",
-  "description": "Sleep-blocking session manager for Claude Code — keeps macOS awake while Claude works, releases when idle.",
+  "description": "Sleep-blocking session manager for Claude Code",
   "author": "rjmorales13",
   "license": "MIT",
   "main": "index.ts",
-  "hooks": "hooks.json",
   "minClaudeVersion": "0.2.0",
   "capabilities": {
-    "hooks": ["UserPromptSubmit", "Stop", "PreToolUse"],
-    "tools": [],
-    "resources": []
-  },
-  "config": {
-    "cliPath": "~/.local/bin/6ix9ine",
-    "acquireTimeout": 3000,
-    "releaseTimeout": 3000,
-    "trackTimeout": 3000,
-    "autoDetect": true
+    "hooks": ["UserPromptSubmit", "Stop", "PreToolUse"]
   }
 }
