@@ -1,0 +1,23 @@
+{
+  "name": "6ix9ine-claude-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "6ix9ine plugin for Claude Code — keeps macOS awake while Claude works",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "install:plugin": "tsx install.ts",
+    "uninstall:plugin": "tsx install.ts --uninstall",
+    "test": "jest --config jest.config.mjs"
+  },
+  "dependencies": {
+    "tsx": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  }
+}
