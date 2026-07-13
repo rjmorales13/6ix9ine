@@ -21,7 +21,7 @@ class SixixNineine < Formula
   license "MIT"
 
   on_arm do
-    url "file:///Users/rmorales/PycharmProjects/6ix9ine/dist/6ix9ine-v1.0.0.tar.gz"
+    url "https://github.com/rjmorales13/6ix9ine/releases/download/v#{version}/6ix9ine-v#{version}-arm64.tar.gz"
     sha256 "7594f0a028c42eeafd21885feb38683bdcd544cbdafd6a763d6eac93a79a0142"
   end
 
