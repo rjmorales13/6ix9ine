@@ -300,9 +300,11 @@ class Daemon:
         # can sleep and cool down, regardless of lid position. (Previously
         # this only fired while the lid was closed, leaving sleep blocked on
         # a hot open-docked Mac.)
-        self.registry.release_all()
+        # Notify BEFORE release_all(): the summary reads registry.sessions(),
+        # which is empty afterwards, so reordering would always say "agents: none".
         if self.lid.state == "open":
             self._notify_summary(self.registry, self.thermal)
+        self.registry.release_all()
         await self._reconcile_sleep_block()
         self._persist_state()
 

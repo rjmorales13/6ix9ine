@@ -56,13 +56,22 @@ def filter_file_path() -> Path:
     return state_dir() / "filter.json"
 
 
+# Thermal color-band boundaries (Celsius). Single source of truth shared by
+# the CLI (bin/cli.py) and the dashboard (bin/tui.py) so they never desync.
+THERMAL_COOL_MAX = 60.0
+THERMAL_WARM_MAX = 80.0
+THERMAL_HOT_MAX = 95.0
+
+
 def thermal_threshold() -> float:
     # Cutout fires at/above this temperature; the daemon releases all sessions.
     return float(os.environ.get("SIXNINE_THERMAL_THRESHOLD", "85"))
 
 
 def thermal_alert_threshold() -> float:
-    # Warn before cutout at/above this temperature (display + advisory only).
+    # Advisory warning temperature: the CLI's `thermal status` prints an
+    # "approaching cutout" note once the current reading reaches this, before
+    # the hard cutout at thermal_threshold().
     return float(os.environ.get("SIXNINE_THERMAL_ALERT", "70"))
 
 
