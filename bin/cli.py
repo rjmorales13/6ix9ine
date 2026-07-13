@@ -13,6 +13,35 @@ import shared
 
 Deps = Optional[Callable]
 
+# ANSI styling for user-facing CLI output (no external deps).
+ANSI_RESET = "\033[0m"
+ANSI_RED = "\033[31m"
+ANSI_GREEN = "\033[32m"
+ANSI_YELLOW = "\033[33m"
+ANSI_ORANGE = "\033[38;5;208m"
+ANSI_DIM = "\033[2m"
+ANSI_BOLD = "\033[1m"
+
+# Thermal state bands, mapping a temperature (C) to a label + color.
+THERMAL_COOL_MAX = 60.0
+THERMAL_WARM_MAX = 80.0
+THERMAL_HOT_MAX = 95.0
+
+
+def thermal_label(temp: float) -> tuple[str, str]:
+    """Return (LABEL, ANSI_COLOR) for a CPU temperature in Celsius."""
+    if temp >= THERMAL_HOT_MAX:
+        return "CRITICAL", ANSI_RED
+    if temp >= THERMAL_WARM_MAX:
+        return "HOT", ANSI_ORANGE
+    if temp >= THERMAL_COOL_MAX:
+        return "WARM", ANSI_YELLOW
+    return "COOL", ANSI_GREEN
+
+
+def _colored(text: str, color: str) -> str:
+    return f"{color}{text}{ANSI_RESET}"
+
 
 def default_agent_modules() -> dict:
     project_root = Path(__file__).resolve().parent.parent
@@ -47,6 +76,10 @@ def build_parser() -> argparse.ArgumentParser:
     track.add_argument("--pids", nargs="+", type=int, required=True)
 
     subparsers.add_parser("status")
+
+    thermal = subparsers.add_parser("thermal")
+    thermal_sub = thermal.add_subparsers(dest="thermal_command")
+    thermal_sub.add_parser("status")
 
     install_hooks = subparsers.add_parser("install-hooks")
     install_hooks.add_argument("--agent", default=None, choices=sorted(shared.VALID_AGENTS - {"manual"}))
@@ -120,6 +153,45 @@ def cmd_status(args, send_request: Deps = None) -> tuple[dict, int]:
     except ConnectionError as exc:
         return {"ok": False, "error": f"daemon not running: {exc}"}, shared.EXIT_DAEMON_NOT_RUNNING
     return response, shared.EXIT_OK
+
+
+def cmd_thermal_status(args, send_request: Deps = None) -> tuple[dict, int]:
+    """Read the daemon's thermal state and render a color-coded summary."""
+    send_request = send_request or ipc.send_request
+    try:
+        response = send_request(shared.socket_path(), {"cmd": "STATUS"})
+    except ConnectionError as exc:
+        return (
+            {"ok": False, "error": f"daemon not running: {exc}"},
+            shared.EXIT_DAEMON_NOT_RUNNING,
+        )
+    if not isinstance(response, dict) or not response.get("ok", True):
+        return {"ok": False, "error": "unexpected daemon response"}, shared.EXIT_GENERAL_ERROR
+
+    state = response.get("thermal", {}) or {}
+    current = state.get("current_temp")
+    peak = state.get("peak_temp")
+    threshold = state.get("cutout_threshold", shared.thermal_threshold())
+    cutout_fired = bool(state.get("cutout_fired", False))
+
+    lines = []
+    if current is None:
+        lines.append(_colored("Thermal Status: UNKNOWN", ANSI_DIM))
+        lines.append(_colored("  No temperature reading available", ANSI_DIM))
+    else:
+        label, color = thermal_label(float(current))
+        lines.append(f"Thermal Status: {_colored(label, color)} ({_colored(f'{current:g}°C', color)})")
+        lines.append(f"  Current: {_colored(f'{current:g}°C', color)}")
+        if peak is not None:
+            lines.append(f"  Peak: {peak:g}°C")
+        lines.append(f"  Threshold: {threshold:g}°C (override via SIXNINE_THERMAL_THRESHOLD)")
+        if cutout_fired:
+            lines.append(_colored("  Cutout: TRIGGERED — all sessions released", ANSI_RED))
+        else:
+            lines.append(_colored("  Cutout: Not triggered", ANSI_GREEN))
+
+    print("\n".join(lines))
+    return {"ok": True}, shared.EXIT_OK
 
 
 # --- hook installers ---
@@ -385,6 +457,7 @@ def main(argv: Optional[list] = None) -> int:
         "hold": cmd_hold,
         "track": cmd_track,
         "status": cmd_status,
+        "thermal": cmd_thermal_status,
         "install-hooks": cmd_install_hooks,
         "uninstall-hooks": cmd_uninstall_hooks,
         "setup-privileged-helper": lambda a: cmd_setup_privileged_helper(),
