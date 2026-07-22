@@ -14,6 +14,10 @@ jobs:
     name: Build Binary
     runs-on: ${{ matrix.os }}
     strategy:
+      # Do not cancel the other arch's build when one leg fails: for a release
+      # we want to know whether BOTH arches build, and during dry-run
+      # debugging cancelling the sibling leg hides its independent result.
+      fail-fast: false
       matrix:
         include:
           - os: macos-15-intel
@@ -46,8 +50,18 @@ jobs:
           else
             TAG_VERSION="dev-${GITHUB_RUN_ID}"
           fi
-          # Inject version into shared.py
-          python -c "import re, pathlib; p = pathlib.Path('bin/shared.py'); c = p.read_text(); p.write_text(re.sub(r'VERSION = \"[^\"]+\"', f'VERSION = \"{TAG_VERSION}\"', c))"
+          # Inject version into shared.py. TAG_VERSION is a bash variable, so
+          # it must be passed to Python via the environment and read with
+          # os.environ. A bare {TAG_VERSION} inside the f-string has no '$', so
+          # bash never substitutes it and Python raises
+          # "NameError: name 'TAG_VERSION' is not defined".
+          TAG_VERSION="$TAG_VERSION" python -c "
+          import os, re, pathlib
+          version = os.environ['TAG_VERSION']
+          p = pathlib.Path('bin/shared.py')
+          c = p.read_text()
+          p.write_text(re.sub(r'VERSION = \"[^\"]+\"', f'VERSION = \"{version}\"', c))
+          "
           
           # Build each script using PyInstaller with strip
           pyinstaller --onefile --strip --clean --name 6ix9ine bin/cli.py
@@ -120,8 +134,16 @@ jobs:
           git checkout main
           git pull origin main
           
-          python -c "
-          import re, pathlib
+          # Same class of bug as the build job: TAG_VERSION / SHA_ARM64 /
+          # SHA_INTEL are bash variables, so they must reach Python via the
+          # environment. Bare {TAG_VERSION} inside these f-strings has no '$',
+          # so bash never substitutes it and Python raises NameError. Pass them
+          # through os.environ instead.
+          TAG_VERSION="$TAG_VERSION" SHA_ARM64="$SHA_ARM64" SHA_INTEL="$SHA_INTEL" python -c "
+          import os, re, pathlib
+          tag_version = os.environ['TAG_VERSION']
+          sha_arm64 = os.environ['SHA_ARM64']
+          sha_intel = os.environ['SHA_INTEL']
           p = pathlib.Path('Formula/6ix9ine.rb')
           content = p.read_text()
           
@@ -129,7 +151,7 @@ jobs:
           on_arm_pattern = r'(on_arm do\s+url\s+\")[^\"]+(\"\s+sha256\s+\")[^\"]+(\")'
           content = re.sub(
               on_arm_pattern,
-              f'\\g<1>https://github.com/rjmorales13/6ix9ine/releases/download/v{TAG_VERSION}/6ix9ine-v{TAG_VERSION}-arm64.tar.gz\\g<2>{SHA_ARM64}\\g<3>',
+              f'\\g<1>https://github.com/rjmorales13/6ix9ine/releases/download/v{tag_version}/6ix9ine-v{tag_version}-arm64.tar.gz\\g<2>{sha_arm64}\\g<3>',
               content,
               flags=re.MULTILINE
           )
@@ -138,13 +160,13 @@ jobs:
           on_intel_pattern = r'(on_intel do\s+url\s+\")[^\"]+(\"\s+sha256\s+\")[^\"]+(\")'
           content = re.sub(
               on_intel_pattern,
-              f'\\g<1>https://github.com/rjmorales13/6ix9ine/releases/download/v{TAG_VERSION}/6ix9ine-v{TAG_VERSION}-x86_64.tar.gz\\g<2>{SHA_INTEL}\\g<3>',
+              f'\\g<1>https://github.com/rjmorales13/6ix9ine/releases/download/v{tag_version}/6ix9ine-v{tag_version}-x86_64.tar.gz\\g<2>{sha_intel}\\g<3>',
               content,
               flags=re.MULTILINE
           )
           
           # Update version
-          content = re.sub(r'version \"[^\"]+\"', f'version \"{TAG_VERSION}\"', content)
+          content = re.sub(r'version \"[^\"]+\"', f'version \"{tag_version}\"', content)
           
           p.write_text(content)
           "
