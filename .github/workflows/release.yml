@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,7 +16,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
           - os: macos-14
             arch: arm64
@@ -68,6 +69,10 @@ jobs:
   release:
     name: Create Release
     needs: build
+    # Only publish a release and update the formula on a real tag push.
+    # A manual workflow_dispatch run builds and uploads artifacts for
+    # inspection but must never create a release or push to main.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
