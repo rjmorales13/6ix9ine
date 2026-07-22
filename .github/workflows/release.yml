@@ -36,7 +36,16 @@ jobs:
 
       - name: Inject version and build binaries
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          # On a real tag push GITHUB_REF is refs/tags/vX.Y.Z. On a manual
+          # workflow_dispatch dry-run it is refs/heads/<branch> (or a tag ref
+          # if dispatched against one), so strip the tag prefix only when it
+          # is actually a version tag; otherwise use a dev placeholder. This
+          # keeps TAG_VERSION free of slashes so the tarball name stays valid.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            TAG_VERSION="dev-${GITHUB_RUN_ID}"
+          fi
           # Inject version into shared.py
           python -c "import re, pathlib; p = pathlib.Path('bin/shared.py'); c = p.read_text(); p.write_text(re.sub(r'VERSION = \"[^\"]+\"', f'VERSION = \"{TAG_VERSION}\"', c))"
           
@@ -70,9 +79,12 @@ jobs:
     name: Create Release
     needs: build
     # Only publish a release and update the formula on a real tag push.
-    # A manual workflow_dispatch run builds and uploads artifacts for
-    # inspection but must never create a release or push to main.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Check the event name too, not just the ref: workflow_dispatch can be
+    # run against a tag ref from the UI, which would make a ref-only guard
+    # true and publish for real. Requiring event_name == 'push' guarantees a
+    # manual dispatch (branch OR tag ref) only builds/uploads artifacts and
+    # never creates a release or pushes to main.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
