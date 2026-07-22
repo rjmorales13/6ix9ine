@@ -21,13 +21,13 @@ class SixixNineine < Formula
   license "MIT"
 
   on_arm do
-    url "https://github.com/rjmorales13/6ix9ine/releases/download/v#{version}/6ix9ine-v#{version}-arm64.tar.gz"
-    sha256 "7594f0a028c42eeafd21885feb38683bdcd544cbdafd6a763d6eac93a79a0142"
+    url "https://github.com/rjmorales13/6ix9ine/releases/download/v1.0.0/6ix9ine-v1.0.0-arm64.tar.gz"
+    sha256 "8d985e7f2b3032ced1b5388ee54ac1a50e1cad9192274fc3d6258497c345a682"
   end
 
   on_intel do
     url "https://github.com/rjmorales13/6ix9ine/releases/download/v1.0.0/6ix9ine-v1.0.0-x86_64.tar.gz"
-    sha256 "3bbc09c34d5f028d123d5f3061b7abe8d767295b170ca133702813a75e871421"
+    sha256 "396ef17ee0deeee20152ca45d0cbf339f9048ef02e1e11e280779052f068d964"
   end
 
   def install
