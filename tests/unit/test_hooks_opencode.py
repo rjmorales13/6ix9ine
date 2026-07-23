@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from hooks import opencode
 
 
@@ -42,6 +44,41 @@ def test_install_prefers_project_level_over_home_level(monkeypatch, tmp_path):
     content = plugin_path.read_text()
     assert "acquire" in content
     assert "release" in content
+
+
+def test_install_does_not_hardcode_a_home_directory_path(monkeypatch, tmp_path):
+    # Regression test: an earlier version hardcoded the CLI as an absolute
+    # ~/.local/bin/6ix9ine path, which went stale the moment the user switched
+    # install methods (e.g. to a Homebrew install) -- every opencode turn then
+    # leaked "No such file or directory" to the terminal. The CLI must be
+    # invoked as a bare command name so it re-resolves against PATH on every
+    # call instead of being baked in once at install time.
+    project_dir, _ = _point_at(monkeypatch, tmp_path)
+    project_dir.mkdir(parents=True)
+
+    opencode.install()
+
+    content = (project_dir / "plugins" / "6ix9ine-hook.ts").read_text()
+    assert str(Path.home()) not in content
+    assert ".local/bin" not in content
+    assert "const CLI = '6ix9ine'" in content
+
+
+def test_install_uses_execfile_form_not_shell_interpolation(monkeypatch, tmp_path):
+    # Regression test: the old template used execSync with a template-literal
+    # shell command (`${CLI} acquire ${input.sessionID} ...`), which both
+    # inherited stderr straight to the user's terminal on failure and
+    # shell-interpolated the session ID unsanitized. execFileSync with array
+    # args avoids both.
+    project_dir, _ = _point_at(monkeypatch, tmp_path)
+    project_dir.mkdir(parents=True)
+
+    opencode.install()
+
+    content = (project_dir / "plugins" / "6ix9ine-hook.ts").read_text()
+    assert "execFileSync" in content
+    assert "execSync(`" not in content
+    assert 'stdio: "ignore"' in content
 
 
 def test_install_uses_real_hook_names_not_placeholders(monkeypatch, tmp_path):
