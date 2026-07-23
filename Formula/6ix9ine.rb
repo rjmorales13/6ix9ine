@@ -17,17 +17,17 @@ end
 class SixixNineine < Formula
   desc "Keep your Mac awake only while AI agents are working"
   homepage "https://github.com/rjmorales13/6ix9ine"
-  version "1.0.1"
+  version "1.0.2"
   license "MIT"
 
   on_arm do
-    url "https://github.com/rjmorales13/6ix9ine/releases/download/v1.0.1/6ix9ine-v1.0.1-arm64.tar.gz"
-    sha256 "cbbe9f4058547f02c2f1ccc7c2e5a0e062f6cb0223525f2b8398d818bdb7bd97"
+    url "https://github.com/rjmorales13/6ix9ine/releases/download/v1.0.2/6ix9ine-v1.0.2-arm64.tar.gz"
+    sha256 "e626ece96f4eae75b53f0ee04ff5acdcc74cdce5cf3a3239e91b9e546dcf65bd"
   end
 
   on_intel do
-    url "https://github.com/rjmorales13/6ix9ine/releases/download/v1.0.1/6ix9ine-v1.0.1-x86_64.tar.gz"
-    sha256 "1efdab74ea1d99f41e95485f4dbd6a97174803d8f2d72b6de648718948839762"
+    url "https://github.com/rjmorales13/6ix9ine/releases/download/v1.0.2/6ix9ine-v1.0.2-x86_64.tar.gz"
+    sha256 "fbf3546bad5934fcbc1ef4910bed5b12baff1292be2376155e347659a666e830"
   end
 
   def install
