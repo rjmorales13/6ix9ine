@@ -252,6 +252,82 @@ the feature safe to consider done.
 
 ---
 
+## Case study 4: OpenCode's stale hardcoded CLI path across install methods (v1.0.3)
+
+### What was wrong
+
+`hooks/opencode.py`'s `PLUGIN_TEMPLATE` hardcoded the CLI as an absolute
+`~/.local/bin/6ix9ine` path (the source-install location, per `install.sh`) and invoked it via
+`execSync` with a shell template-literal string. This worked at the time the plugin was generated,
+but the maintainer later migrated their own install from source (`install.sh` → `~/.local/bin`) to
+Homebrew (`/opt/homebrew/bin/6ix9ine`, symlinked from the Cellar). `~/.local/bin/6ix9ine` no longer
+existed, so every OpenCode turn's `execSync` call failed with `/bin/sh: .../6ix9ine: No such file or
+directory` — and because `execSync` inherits stderr to the parent process by default (only stdout
+is piped/returned), that raw shell error leaked straight to the user's terminal on **every single
+turn**, even though the plugin's own `try/catch` correctly swallowed the resulting exception per
+the "6ix9ine failing must never break an OpenCode turn" contract.
+
+This is the same underlying mistake as Case study 3 (`sys.executable` meaning different things
+depending on execution/install mode) — and the universal checklist below already had a bullet
+warning against it ("Never hardcode one specific install method's binary path... Resolve it
+dynamically") by the time this bug shipped. It was written for `hooks/claude.py`'s fix but never
+retroactively applied to `hooks/opencode.py`, which still had the old hardcoded path. **A checklist
+item only prevents a mistake in the file it's applied to** — it doesn't retroactively audit
+sibling files that already shipped before the item existed.
+
+### How it was found
+
+Reported directly by the maintainer after an `opencode` update: a `No such file or directory` line
+appearing after every conversation turn. Traced to the plugin file itself
+(`~/.config/opencode/plugins/6ix9ine-hook.ts`), then to its generator (`hooks/opencode.py`) — fixing
+only the already-deployed plugin file would have left the bug latent, since the next
+`install-hooks --agent opencode` run would have regenerated the exact same broken path from the
+unfixed template.
+
+### The real problem
+
+- An absolute path resolved and baked in once (at install time, by `hooks/opencode.py`) is only
+  ever as current as the moment it was written. It has no way to notice the user later switched
+  install methods.
+- Unlike `hooks/claude.py`'s fix (Case study 3), which *must* precompute an absolute path because
+  Claude Code's `hooks.json` invokes its `"command"` field directly (no shell, no PATH lookup),
+  OpenCode's plugin runtime spawns the CLI itself — `execFileSync`/`execvp` do their own PATH
+  lookup at call time. That makes a **bare command name** the more robust choice specifically for
+  this integration point, not a weaker one: it re-resolves against PATH on every single call
+  instead of being frozen at install time, so it self-heals across future install-method changes
+  with zero re-install step required.
+- Separately, `execSync`'s default stdio behavior (stdout piped, stderr inherited to the parent)
+  means *any* failure in a shell-string-based invocation leaks to the user's terminal regardless of
+  the surrounding `try/catch` — the exception is swallowed, but the child process's own stderr
+  already printed before that catch ever runs.
+
+### The fix
+
+- Changed `_CLI_PATH` from an absolute `~/.local/bin/6ix9ine` path to the bare string `"6ix9ine"`.
+- Replaced `execSync` + shell template-literal interpolation with `execFileSync` + array-form args
+  + `stdio: "ignore"` — this closes a minor shell-injection surface on the session ID (previously
+  interpolated unsanitized into a shell string) and silences the leaked stderr as defense-in-depth,
+  on top of the PATH fix itself.
+- Regenerated the live, already-deployed plugin file by re-running `hooks.opencode.install()` so
+  the fix took effect immediately, not just for future fresh installs.
+
+### How it was verified
+
+1. Unit tests added asserting the generated plugin never contains a hardcoded home-directory path
+   or the old `execSync(` shell-string form (`tests/unit/test_hooks_opencode.py`) — a direct
+   regression test for this exact bug class, per the universal checklist's own item 5 below.
+2. Manually ran `6ix9ine acquire <test-session> --tool opencode --reason "..."` and `6ix9ine
+   release <test-session>` directly against the real Homebrew-installed binary and confirmed both
+   succeeded with real JSON output.
+3. Two independent Opus review passes — one on the diagnosis before implementation, one on the
+   final diff — both confirmed the root cause and the fix, including verifying that
+   `execFileSync`'s bare-name PATH resolution actually matches `execvp` semantics rather than just
+   asserting it.
+4. Shipped as `v1.0.3`: tag pushed, `release.yml`'s build+release automation ran clean on both
+   arches, and the Homebrew tap (`rjmorales13/homebrew-6ix9ine`) was updated to point at it.
+
+---
+
 ## Universal checklist for adding hook support for a new CLI
 
 Do **not** start from the `hooks/newagent.py` template in [CONTRIBUTING.md](CONTRIBUTING.md) as

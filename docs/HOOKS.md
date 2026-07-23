@@ -111,7 +111,9 @@ acquire and real `session.idle`-triggered release, caught live in `6ix9ine statu
 alongside an unrelated agent session. See
 [TROUBLESHOOTING-HOOKS.md](TROUBLESHOOTING-HOOKS.md) bug #7 for how the earlier, completely
 non-functional implementation was found and fixed, and for the real API details (verified
-against the actual installed `@opencode-ai/plugin` package, not just docs).
+against the actual installed `@opencode-ai/plugin` package, not just docs); see Case study 4
+(same doc) for a later fix (v1.0.3) to a hardcoded CLI path that went stale across install
+methods.
 
 ### Hook System
 
@@ -141,15 +143,18 @@ The `6ix9ine install-hooks --agent opencode` command:
 
 ```typescript
 // ~/.config/opencode/plugins/6ix9ine-hook.ts
-import { execSync } from "node:child_process"
+import { execFileSync } from "node:child_process"
 
-const CLI = "/absolute/path/to/6ix9ine" // generated per-machine by hooks/opencode.py
+const CLI = "6ix9ine" // bare command name -- resolved via PATH at call time, not
+                       // baked in as an absolute path. See TROUBLESHOOTING-HOOKS.md
+                       // Case study 4 for why an absolute, install-time-resolved
+                       // path goes stale across install-method changes here.
 
 export const SixNinePlugin = async () => {
   return {
     "chat.message": async (input) => {
       try {
-        execSync(`${CLI} acquire ${input.sessionID} --tool opencode --reason "opencode turn"`, { timeout: 3000 })
+        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn"], { timeout: 3000, stdio: "ignore" })
       } catch (err) {
         // 6ix9ine failing must never break an OpenCode turn
       }
@@ -159,7 +164,7 @@ export const SixNinePlugin = async () => {
       const sessionID = input.event.properties?.sessionID
       if (!sessionID) return
       try {
-        execSync(`${CLI} release ${sessionID}`, { timeout: 3000 })
+        execFileSync(CLI, ["release", sessionID], { timeout: 3000, stdio: "ignore" })
       } catch (err) {
         // 6ix9ine failing must never break an OpenCode turn
       }
