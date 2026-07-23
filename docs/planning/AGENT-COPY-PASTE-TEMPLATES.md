@@ -14,8 +14,8 @@ BRANCH PREFIX: docs/fable-marketing-content
 WORK ORDER ID: FableWO-001
 
 FILES TO REVIEW (Windows paths):
-- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\STRATEGY-SUMMARY.md (lines 1-100)
-- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\step-3-revised-critique-unified-strategy.md (lines 80-120)
+- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\docs\sharing-is-good\STRATEGY-SUMMARY.md (lines 1-100)
+- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\docs\sharing-is-good\step-3-revised-critique-unified-strategy.md (lines 80-120)
 
 TASK 1: Research & Outline Comparison Post
 - Create file: blog-posts\comparison-outline.md
@@ -72,7 +72,7 @@ WORK ORDER ID: OpusWO-001
 
 FILES TO REVIEW (Windows paths):
 - C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\README.md (architecture section)
-- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\step-3-revised-critique-unified-strategy.md (lines 110-140)
+- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\docs\sharing-is-good\step-3-revised-critique-unified-strategy.md (lines 110-140)
 
 TASK 1: Design Claude Code Plugin Architecture
 - Create file: integrations\claude-code-plugin-design.md
@@ -153,7 +153,7 @@ BRANCH PREFIX: feat/sonnet-[feature]
 WORK ORDER ID: SonnetWO-001
 
 FILES TO REVIEW (Windows paths):
-- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\STRATEGY-SUMMARY.md (lines 140-180)
+- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\docs\sharing-is-good\STRATEGY-SUMMARY.md (lines 140-180)
 
 TASK 1: Create Homebrew Formula
 - Create file: Formula\6ix9ine.rb
@@ -244,7 +244,7 @@ WORK ORDER ID: OpenCodeWO-001
 
 FILES TO REVIEW (Windows paths):
 - C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\README.md (main daemon functionality)
-- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\STRATEGY-SUMMARY.md (lines 240-290)
+- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\docs\sharing-is-good\STRATEGY-SUMMARY.md (lines 240-290)
 
 TASK 1: Audit CLI Error Handling
 - Review main CLI entrypoint (cmd\6ix9ine\main.go or equivalent on Windows)
@@ -366,7 +366,7 @@ BRANCH PREFIX: feat/antigravity-[feature]
 WORK ORDER ID: AntiGravityWO-001
 
 FILES TO REVIEW (Windows paths):
-- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\step-3-revised-critique-unified-strategy.md (lines 160-200)
+- C:\Users\{{USERNAME}}\PycharmProjects\6ix9ine\docs\sharing-is-good\step-3-revised-critique-unified-strategy.md (lines 160-200)
 
 TASK 1: Design Advanced Scheduling System
 - Create file: docs\scheduling-system-design.md

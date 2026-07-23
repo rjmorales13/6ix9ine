@@ -14,7 +14,7 @@
 
 - Modify `bin/tui.py`: implement the new Textual layout, add focused render helpers, keep existing commands/bindings, and preserve `--kill` behavior.
 - Modify `tests/unit/test_tui.py`: expand coverage for layout data shaping and any new helper functions.
-- Create `docs/superpowers/plans/2026-07-04-tui-redesign.md`: implementation plan for the redesign.
+- Create `docs/planning/superpowers/plans/2026-07-04-tui-redesign.md`: implementation plan for the redesign.
 
 ## Design Constraints
 

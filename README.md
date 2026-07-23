@@ -1,138 +1,66 @@
 # 6ix9ine
 
-> 6ix9ine is the snitch that rats on sleep 🐀 — keeps your Mac awake only while work is happening, then lets it go back to sleep like nothing ever happened.
+> **Sleep management for AI agents.**
+> The snitch that rats on sleep 🐀 — keeps your Mac awake only while work is happening, then lets it go back to sleep like nothing ever happened.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![macOS](https://img.shields.io/badge/macOS-supported-000000?logo=apple&logoColor=white)](#requirements)
 
-<p align="left"><sub><strong>Built for docked Macs 🖥️, active agents 🤖, and the moments when you want one quick glance instead of a full terminal dive.</strong></sub></p>
+<!--
+  DEMO GIF SLOT — record a short clip (agent starts → SLEEP BLOCKED → agent ends → SLEEP AVAILABLE),
+  save it as docs/demo.gif, then replace the SVG line below with:
+      ![6ix9ine in action](docs/demo.gif)
+  Until then the full-dashboard SVG stands in as the hero image.
+-->
+![6ix9ine dashboard — live view](docs/dashboard-full.svg)
+
+*Agent starts → `🚫 SLEEP BLOCKED`. Last agent finishes → `💤 SLEEP AVAILABLE`. No toggles, no cleanup.*
 
 ---
 
-## Dashboard
+## Never lose another overnight run
 
-**See everything at a glance.** The `t69` dashboard is your live terminal control surface for monitoring and managing active work.
+Your agent works for hours. Your Mac sleeps after fifteen minutes.
 
-![6ix9ine dashboard — full view](docs/dashboard-full.svg)
+You kick off a long Claude Code refactor, dock the laptop, close the lid — and macOS puts the whole machine to sleep. You come back to a dead session and half-finished work.
 
-*Full view (120×42): wordmark header, two active sessions, a timed hold, and the module dash.*
+The usual fixes are blunt instruments:
 
-![6ix9ine dashboard — collapsed header](docs/dashboard-collapsed.svg)
+- `caffeinate` dies with your terminal and doesn't survive a closed lid.
+- "Never sleep" apps keep your Mac awake 24/7 whether it's working or not.
 
-*Collapsed view (80×22): header shrinks to one line, everything still fits.*
+6ix9ine ties wakefulness to **actual work**. Sleep is blocked only while an agent session is running, and released automatically the moment the last one ends. Install once, forget it exists.
 
-![6ix9ine dashboard — idle state](docs/dashboard-idle.svg)
+## Why not `caffeinate`?
 
-*Idle state: daemon offline, no active sessions, sleep available. 💤*
+Because `caffeinate` never knows when you're done.
 
----
+You start it. You stop it. Forget it running and your laptop stays awake till morning. Forget to start it and your agent run dies at the lid close. And plain `caffeinate` won't block sleep on a docked Mac with the lid shut — that needs `pmset disablesleep`, which needs root.
 
-## How It Works
+6ix9ine follows your work automatically: agents call `acquire` when they start and `release` when they finish, a reference counter tracks how many are live, and sleep is blocked only while that count is above zero — clamshell included.
 
-This is the whole idea distilled into three layers — each one has one job, and none of them do more than they need to.
+## How it compares
 
-### 🎣 Layer 1: Hooks that catch
+| | `caffeinate` | Amphetamine | **6ix9ine** |
+|---|:---:|:---:|:---:|
+| Auto-detects AI agent sessions | ❌ | ❌ | ✅ |
+| Releases sleep when work ends | ❌ | ⚠️ manual/timer | ✅ automatic |
+| Multiple concurrent sessions | ❌ | ❌ | ✅ reference-counted |
+| Crash-safe (no leaked wake locks) | ❌ | ❌ | ✅ |
+| Docked clamshell (lid closed) | ❌ | ⚠️ partial | ✅ |
+| Live terminal dashboard | ❌ | ❌ | ✅ `t69` |
+| Free + fully auditable | ✅ | ❌ closed-source | ✅ MIT |
 
-Agent lifecycle hooks fire session-start and session-end events whenever your tools begin or finish work.
+## Who it's for
 
-- Claude Code and OpenCode have fully confirmed hook integrations — they fire a 6ix9ine CLI command when a session starts and again when it ends
+Built for people running long, hands-off work on a Mac:
 
-- Codex CLI and Antigravity CLI (`agy`) are being researched — their integration points aren't fully mapped yet, but the hook architecture is ready
-
-- If you don't use agents with hooks, you can still use `6ix9ine acquire` and `6ix9ine release` manually in any script or shell
-
-The hooks are small, targeted, and do nothing except tell the daemon "something started" or "something stopped."
-
-### 🔢 Layer 2: A daemon that counts
-
-A persistent background daemon (LaunchAgent) maintains a reference-counted registry of every open session.
-
-- Each `acquire` call increments the counter; each `release` decrements it
-
-- The daemon watches for process death — if a session-holding process dies without calling release, the session is automatically released
-
-- When the count is zero, the daemon signals the helper to unblock sleep
-
-- When the count is above zero, sleep stays blocked, including clamshell sleep on docked Macs
-
-This layer is purely bookkeeping. It lives in user space, it's restartable without losing state, and it never touches system APIs directly.
-
-### 🛡️ Layer 3: A helper that blocks
-
-A minimal root LaunchDaemon is the only component allowed to call IOKit sleep-blocking APIs. It has one endpoint and no configuration surface.
-
-- Receives `set_sleep_blocked(true|false)` commands via Unix socket
-
-- Authenticates callers by peer PID and owner UID — only the 6ix9ine daemon is allowed to talk to it
-
-- Calls `pmset disablesleep` to block or unblock sleep at the OS level
-
-That's everything it does. No config files. No policy logic. No agent awareness. Just block or unblock on command. This is the security boundary: the privileged surface is as small as it can possibly be.
-
----
-
-## 🔥 What It Does
-
-### 🛌 Sleep that follows your work — not the other way around
-
-Most keep-awake tools flip a switch and leave it flipped. 6ix9ine tracks whether work is actually happening and only blocks sleep while sessions are active. When the last session ends, sleep is unblocked automatically — no manual cleanup, no stale assertions.
-
-The daemon's reference counter can handle multiple concurrent sessions from different agents, and process-death watchers guarantee a session can't leak even if a tool crashes without calling release.
-
-### 🔒 Full clamshell support for docked Macs
-
-When your Mac is docked with the lid closed, macOS normally sleeps immediately. 6ix9ine's privileged helper calls `pmset disablesleep` to keep the system awake — not just the display. This means agent sessions can keep running overnight on a docked Mac without keeping the lid open.
-
-Lid-close and lid-open events are monitored by the daemon, and a lid-open summary is printed to the dashboard when you open the lid back up.
-
-### 👁️ Live dashboard with real-time visibility
-
-The `t69` dashboard shows you everything at a glance: active sessions, held durations, which agent is holding what, sleep state, lid position, and thermal readings. Each session has a stable color identity and a held-time tier (green → orange → red → 🔥).
-
-The module dash monitors auxiliary processes like Ollama and Docker in quiet gray, filterable with keybindings. The split inspector lets you drill into any session for full detail — agent, UUID, PID, reason, and more.
-
-### ⚡ Designed to stay out of your way
-
-6ix9ine is a background tool that doesn't ask for attention. The daemon starts silently, hooks install in seconds, the dashboard opens and closes at will. The entire Python dependency footprint is minimal — nothing beyond what's in `requirements.txt`.
-
-The install script sets up a private venv, copies only the runtime modules, and never touches your system Python or global site-packages.
-
-### 🍎 Built for macOS, not bolted on
-
-Three-tier privilege model means the security boundary is intentional and auditable. The user-level daemon handles all policy logic; the root helper does exactly one thing (block/unblock sleep) and has no configuration surface.
-
-Communication happens over Unix sockets with peer-UID authentication. The LaunchAgent and LaunchDaemon plists follow Apple's conventions. This is macOS system integration done properly, not a shell script praying for permission.
-
-## Why It Exists
-
-Most sleep tools are either too broad or too invisible. 6ix9ine exists to keep the machine awake **only when the work deserves it**, then get out of the way the moment the job is done. No config files. No toggles. It just works.
-
-### Dashboard details
-
-- **Wordmark header** — 4-row half-block pixel banner (`6`/`9` chunky shadow glyphs, `ixine` slanted script), collapses to one line below 30 terminal rows
-
-- **Status chips** — `ACTIVE`/`IDLE` badge, `🚫 SLEEP BLOCKED` / `💤 SLEEP AVAILABLE` indicator
-
-- **Dense monitor** — active sessions + timed holds, sorted by age. Each session has a stable identity color, agent emoji, and held-time tier color (green → orange → red → 🔥)
-
-- **Split inspector** — select a row to see full details: agent, UUID, PID, held duration, reason, sleep state, lid position, thermal reading
-
-- **Module dash** — auxiliary processes (Ollama, Docker, etc.) in quiet gray, filterable with `a`/`r` keys
-
-- **Keybindings** — `q` quit, `k` kill, `x` purge all, `a` ignore, `r` restore, `↑↓` select, `Enter` inspect
-
-### 🤖 Supported agents
-
-| Agent | Status | Notes |
-|---|---|---|
-| Claude Code | ✅ **Live** 🔥 | Hook integration confirmed working end-to-end |
-| OpenCode | ✅ **Live** 🔥 | Hook integration via TypeScript plugin |
-| Codex CLI | 🔄 In progress | Hook integration pending research — see [HOOKS.md](6ix9ine-rap-sheet-docs/HOOKS.md) |
-| Antigravity CLI (`agy`) | 🔄 In progress | Hook integration pending research |
-| Manual (`acquire`/`release`) | ✅ **Live** 🔥 | Ad-hoc acquire/release for any tool or script |
-| Process-sniffing fallback | 🗓️ Coming soon | Auto-detect agents without hooks |
-| Menu bar app | 🗓️ Coming soon | `rumps`-based status icon — glance without the terminal |
+- ✅ **Claude Code** and **OpenCode** — auto-detected via hooks, zero config
+- ✅ Overnight AI coding, model training, or batch jobs
+- ✅ Long Docker builds, data pipelines, render jobs — anything, via manual `acquire`/`release`
+- ✅ Docked MacBooks running with the lid closed
+- 🔄 Codex CLI and Antigravity (`agy`) — hook integration in progress
 
 ---
 
@@ -163,7 +91,7 @@ Homebrew can't run privileged setup steps for you automatically, so finish setup
 
 This will show a `Password:` prompt in your terminal. That's normal — it's macOS's standard `sudo` authorization asking for **your own Mac login password**, the same one you use to unlock your laptop or install other apps. Nothing is sent anywhere and no new account is created. Nothing will appear on screen as you type the password (not even dots) — that's expected, just type it and press Return.
 
-Why it needs this: keeping your Mac awake while docked with the lid closed requires a small background helper with the specific OS-level permission to override sleep. macOS requires admin authorization to install any such background service — see "Layer 3: A helper that blocks" above for exactly what it can and can't do (one job: block/unblock sleep on command; nothing else).
+Why it needs this: keeping your Mac awake while docked with the lid closed requires a small background helper with the specific OS-level permission to override sleep. macOS requires admin authorization to install any such background service — see "Layer 3: A helper that blocks" below for exactly what it can and can't do (one job: block/unblock sleep on command; nothing else).
 
 **Step 2 — wire up agent hooks:**
 
@@ -252,6 +180,124 @@ t69
 
 ---
 
+## Dashboard
+
+**See everything at a glance.** The `t69` dashboard is your live terminal control surface for monitoring and managing active work — every session, who holds it, for how long, and whether sleep is currently blocked.
+
+![6ix9ine dashboard — collapsed header](docs/dashboard-collapsed.svg)
+
+*Collapsed view (80×22): header shrinks to one line, everything still fits.*
+
+![6ix9ine dashboard — idle state](docs/dashboard-idle.svg)
+
+*Idle state: daemon offline, no active sessions, sleep available. 💤*
+
+### Dashboard details
+
+- **Wordmark header** — 4-row half-block pixel banner (`6`/`9` chunky shadow glyphs, `ixine` slanted script), collapses to one line below 30 terminal rows
+
+- **Status chips** — `ACTIVE`/`IDLE` badge, `🚫 SLEEP BLOCKED` / `💤 SLEEP AVAILABLE` indicator
+
+- **Dense monitor** — active sessions + timed holds, sorted by age. Each session has a stable identity color, agent emoji, and held-time tier color (green → orange → red → 🔥)
+
+- **Split inspector** — select a row to see full details: agent, UUID, PID, held duration, reason, sleep state, lid position, thermal reading
+
+- **Module dash** — auxiliary processes (Ollama, Docker, etc.) in quiet gray, filterable with `a`/`r` keys
+
+- **Keybindings** — `q` quit, `k` kill, `x` purge all, `a` ignore, `r` restore, `↑↓` select, `Enter` inspect
+
+---
+
+## 🔥 What It Does
+
+### 🛌 Sleep that follows your work — not the other way around
+
+Most keep-awake tools flip a switch and leave it flipped. 6ix9ine tracks whether work is actually happening and only blocks sleep while sessions are active. When the last session ends, sleep is unblocked automatically — no manual cleanup, no stale assertions.
+
+The daemon's reference counter can handle multiple concurrent sessions from different agents, and process-death watchers guarantee a session can't leak even if a tool crashes without calling release.
+
+### 🔒 Full clamshell support for docked Macs
+
+When your Mac is docked with the lid closed, macOS normally sleeps immediately. 6ix9ine's privileged helper calls `pmset disablesleep` to keep the system awake — not just the display. This means agent sessions can keep running overnight on a docked Mac without keeping the lid open.
+
+Lid-close and lid-open events are monitored by the daemon, and a lid-open summary is printed to the dashboard when you open the lid back up.
+
+### 👁️ Live dashboard with real-time visibility
+
+The `t69` dashboard shows you everything at a glance: active sessions, held durations, which agent is holding what, sleep state, lid position, and thermal readings. Each session has a stable color identity and a held-time tier (green → orange → red → 🔥).
+
+The module dash monitors auxiliary processes like Ollama and Docker in quiet gray, filterable with keybindings. The split inspector lets you drill into any session for full detail — agent, UUID, PID, reason, and more.
+
+### ⚡ Designed to stay out of your way
+
+6ix9ine is a background tool that doesn't ask for attention. The daemon starts silently, hooks install in seconds, the dashboard opens and closes at will. The entire Python dependency footprint is minimal — nothing beyond what's in `requirements.txt`.
+
+The install script sets up a private venv, copies only the runtime modules, and never touches your system Python or global site-packages.
+
+### 🍎 Built for macOS, not bolted on
+
+Three-tier privilege model means the security boundary is intentional and auditable. The user-level daemon handles all policy logic; the root helper does exactly one thing (block/unblock sleep) and has no configuration surface.
+
+Communication happens over Unix sockets with peer-UID authentication. The LaunchAgent and LaunchDaemon plists follow Apple's conventions.
+
+### 🤖 Supported agents
+
+| Agent | Status | Notes |
+|---|---|---|
+| Claude Code | ✅ **Live** 🔥 | Hook integration confirmed working end-to-end |
+| OpenCode | ✅ **Live** 🔥 | Hook integration via TypeScript plugin |
+| Codex CLI | 🔄 In progress | Hook integration pending research — see [HOOKS.md](docs/HOOKS.md) |
+| Antigravity CLI (`agy`) | 🔄 In progress | Hook integration pending research |
+| Manual (`acquire`/`release`) | ✅ **Live** 🔥 | Ad-hoc acquire/release for any tool or script |
+| Process-sniffing fallback | 🗓️ Coming soon | Auto-detect agents without hooks |
+| Menu bar app | 🗓️ Coming soon | `rumps`-based status icon — glance without the terminal |
+
+---
+
+## How It Works
+
+This is the whole idea distilled into three layers — each one has one job, and none of them do more than they need to.
+
+### 🎣 Layer 1: Hooks that catch
+
+Agent lifecycle hooks fire session-start and session-end events whenever your tools begin or finish work.
+
+- Claude Code and OpenCode have fully confirmed hook integrations — they fire a 6ix9ine CLI command when a session starts and again when it ends
+
+- Codex CLI and Antigravity CLI (`agy`) are being researched — their integration points aren't fully mapped yet, but the hook architecture is ready
+
+- If you don't use agents with hooks, you can still use `6ix9ine acquire` and `6ix9ine release` manually in any script or shell
+
+The hooks are small, targeted, and do nothing except tell the daemon "something started" or "something stopped."
+
+### 🔢 Layer 2: A daemon that counts
+
+A persistent background daemon (LaunchAgent) maintains a reference-counted registry of every open session.
+
+- Each `acquire` call increments the counter; each `release` decrements it
+
+- The daemon watches for process death — if a session-holding process dies without calling release, the session is automatically released
+
+- When the count is zero, the daemon signals the helper to unblock sleep
+
+- When the count is above zero, sleep stays blocked, including clamshell sleep on docked Macs
+
+This layer is purely bookkeeping. It lives in user space, it's restartable without losing state, and it never touches system APIs directly.
+
+### 🛡️ Layer 3: A helper that blocks
+
+A minimal root LaunchDaemon is the only component allowed to call IOKit sleep-blocking APIs. It has one endpoint and no configuration surface.
+
+- Receives `set_sleep_blocked(true|false)` commands via Unix socket
+
+- Authenticates callers by peer PID and owner UID — only the 6ix9ine daemon is allowed to talk to it
+
+- Calls `pmset disablesleep` to block or unblock sleep at the OS level
+
+That's everything it does. No config files. No policy logic. No agent awareness. Just block or unblock on command. This is the security boundary: the privileged surface is as small as it can possibly be — read the whole thing in `bin/helper.py` before you trust it.
+
+---
+
 ## 🗑️ Uninstall
 
 Homebrew's `brew uninstall` only removes the CLI binaries — it has no idea the daemon, the privileged helper, or agent hooks exist, since those are set up separately after install, not by the formula itself. Removing just the binaries leaves all three running/installed and orphaned.
@@ -266,27 +312,27 @@ This removes, in order: agent hooks, the background daemon, the privileged helpe
 
 ## Engineering
 
-6ix9ine is built with production-grade rigor. It's not a script — it's a properly architected system.
+What's under the hood, by the numbers:
 
 | Metric | |
 |---|---|
 | **Architecture** | 3-tier privilege model (hook → daemon → helper) — the privileged surface is intentionally minimal and auditable |
 | **Tests** | 223+ unit and integration tests covering the registry, CLI, IPC, daemon, helper, TUI, theme, idle tracker, and shared components |
-| **Bugs caught** | 7 real bugs found and fixed during testing — each documented with root cause and methodology in [TROUBLESHOOTING-HOOKS.md](6ix9ine-rap-sheet-docs/TROUBLESHOOTING-HOOKS.md) |
+| **Bugs caught** | 7 real bugs found and fixed during testing — each documented with root cause and methodology in [TROUBLESHOOTING-HOOKS.md](docs/TROUBLESHOOTING-HOOKS.md) |
 | **Real verification** | Full privileged path tested live on macOS, not just mocks — `pmset disablesleep` confirmed via `pmset -g`, process-death auto-release confirmed, thermal fallback confirmed on Apple Silicon |
-| **Documentation** | Architecture, hooks, API reference, install guide, contributing guide, troubleshooting — all in [`6ix9ine-rap-sheet-docs/`](6ix9ine-rap-sheet-docs/) |
+| **Documentation** | Architecture, hooks, API reference, install guide, contributing guide, troubleshooting — all in [`docs/`](docs/) |
 
 ### Documentation
 
 | Document | Purpose |
 |---|---|
-| [ARCHITECTURE.md](6ix9ine-rap-sheet-docs/ARCHITECTURE.md) | System design, privilege tiers, and IPC protocol |
-| [INSTALL.md](6ix9ine-rap-sheet-docs/INSTALL.md) | Installation options and setup steps |
-| [HOOKS.md](6ix9ine-rap-sheet-docs/HOOKS.md) | Agent hook integration guide |
-| [API.md](6ix9ine-rap-sheet-docs/API.md) | CLI reference and status output |
-| [CONTRIBUTING.md](6ix9ine-rap-sheet-docs/CONTRIBUTING.md) | How to add support for new agents |
-| [TROUBLESHOOTING-HOOKS.md](6ix9ine-rap-sheet-docs/TROUBLESHOOTING-HOOKS.md) | Hook integration bugs found/fixed, and a verification checklist |
-| [status-view-spec.md](6ix9ine-rap-sheet-docs/dashboard-status-view/status-view-spec.md) | Final TUI dashboard mock and visual rules |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, privilege tiers, and IPC protocol |
+| [INSTALL.md](docs/INSTALL.md) | Installation options and setup steps |
+| [HOOKS.md](docs/HOOKS.md) | Agent hook integration guide |
+| [API.md](docs/API.md) | CLI reference and status output |
+| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | How to add support for new agents |
+| [TROUBLESHOOTING-HOOKS.md](docs/TROUBLESHOOTING-HOOKS.md) | Hook integration bugs found/fixed, and a verification checklist |
+| [status-view-spec.md](docs/dashboard-status-view/status-view-spec.md) | Final TUI dashboard mock and visual rules |
 
 ---
 

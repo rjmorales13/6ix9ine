@@ -4,7 +4,7 @@ from __future__ import annotations
 def test_thermal_current_temp_is_populated(run_cli):
     """
     KNOWN FAILING as of 2026-07-04 -- this is bug #4
-    (6ix9ine-rap-sheet-docs/handoff-road-to-gummo.md), not yet fixed.
+    (docs/planning/handoff-road-to-gummo.md), not yet fixed.
 
     thermal_monitor.py calls `powermetrics --samplers smc`, which errors with
     "powermetrics: unrecognized sampler: smc" on Apple Silicon (`smc` was an
@@ -18,5 +18,5 @@ def test_thermal_current_temp_is_populated(run_cli):
     assert status["thermal"]["current_temp"] is not None, (
         "thermal reading is broken (bug #4): powermetrics --samplers smc doesn't exist on "
         "Apple Silicon, so current_temp never gets populated. This is a known, unfixed bug -- "
-        "see 6ix9ine-rap-sheet-docs/handoff-road-to-gummo.md."
+        "see docs/planning/handoff-road-to-gummo.md."
     )

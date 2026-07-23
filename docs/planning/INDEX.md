@@ -1,6 +1,6 @@
 # 6ix9ine Multi-Agent Orchestration: Complete Documentation Index
 
-**Location:** `/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/`  
+**Location:** `/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/`  
 **Last Updated:** 2026-07-12  
 **Status:** ✅ All files consolidated and paths updated
 
@@ -71,8 +71,8 @@ This folder contains complete multi-agent work orders, strategy analysis, and ex
 
 ### Step 4: Post to Each Agent
 ```
-Read: C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\GIT-WORKFLOW-SHARED.md
-Also read: C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\[AGENT]-TASK-[feature].md
+Read: C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\GIT-WORKFLOW-SHARED.md
+Also read: C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\[AGENT]-TASK-[feature].md
 
 Do all tasks listed. If not 95% confident, STOP and ask.
 ```
@@ -184,7 +184,7 @@ Do all tasks listed. If not 95% confident, STOP and ask.
 
 Before posting to agents, verify:
 
-- [ ] All files in `/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/`
+- [ ] All files in `/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/`
 - [ ] Paths all reference `sharing-is-good` subdirectory
 - [ ] You've picked Option A/B/C from FINAL-RECOMMENDATION.md
 - [ ] You understand each agent's work from AGENT-QUICK-REFERENCE.md
@@ -198,16 +198,16 @@ Before posting to agents, verify:
 
 ```
 All files located at:
-C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\
+C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\
 
 Specific files:
-C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\STRATEGY-SUMMARY.md
-C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\MODEL-ALLOCATION-ANALYSIS.md
-C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\FINAL-RECOMMENDATION.md
-C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\WORK-ORDERS.md
-C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\AGENT-QUICK-REFERENCE.md
-C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\AGENT-COPY-PASTE-TEMPLATES.md
-C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\AGENT-SEPARATE-TASKS.md
+C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\STRATEGY-SUMMARY.md
+C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\MODEL-ALLOCATION-ANALYSIS.md
+C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\FINAL-RECOMMENDATION.md
+C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\WORK-ORDERS.md
+C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\AGENT-QUICK-REFERENCE.md
+C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\AGENT-COPY-PASTE-TEMPLATES.md
+C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\AGENT-SEPARATE-TASKS.md
 ```
 
 ---

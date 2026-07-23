@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# Status: pending research (see 6ix9ine-rap-sheet-docs/HOOKS.md). Antigravity
+# Status: pending research (see docs/HOOKS.md). Antigravity
 # CLI (`agy`)'s plugin directory and hook events are unconfirmed, so this
 # module only detects a plausible config directory and refuses to silently
 # no-op an install.
@@ -10,7 +10,7 @@ AGENT_NAME = "antigravity"
 CONFIG_DIR = Path.home() / ".antigravity"
 
 _PENDING_MESSAGE = (
-    "antigravity hook integration is pending research; see 6ix9ine-rap-sheet-docs/HOOKS.md "
+    "antigravity hook integration is pending research; see docs/HOOKS.md "
     "(process-sniffing fallback can be enabled via SIXNINE_SNIFFING instead)"
 )
 

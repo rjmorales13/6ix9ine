@@ -173,7 +173,7 @@ Do not:
 - **Objective:** Document how 6ix9ine hooks into Claude Code lifecycle
 - **Files to review:** 
   - C:\Users\rmorales\PycharmProjects\6ix9ine\README.md (architecture section)
-  - C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\step-3-revised-critique-unified-strategy.md (lines 110-140)
+  - C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\step-3-revised-critique-unified-strategy.md (lines 110-140)
 - **Output file:** integrations\claude-code-plugin-design.md
 - **Requirements:**
   - Hook points (session start, session end, error scenarios)

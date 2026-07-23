@@ -74,7 +74,7 @@
 #### What to Create
 
 ```
-6ix9ine-rap-sheet-docs/sharing-is-good/
+docs/planning/
 ├── MODEL-ALLOCATION-ANALYSIS.md (this answers "right model?" question)
 ├── AGENT-SEPARATE-TASKS.md (this has the structure + OPUS example)
 ├── GIT-WORKFLOW-SHARED.md (all agents read this first)
@@ -89,14 +89,14 @@
 
 **STEP 1: Tell agent to read the shared file first**
 ```
-Read: C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\GIT-WORKFLOW-SHARED.md
+Read: C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\GIT-WORKFLOW-SHARED.md
 
 This applies to ALL agents. Read it completely.
 ```
 
 **STEP 2: Post the agent's specific task**
 ```
-Now read your specific task: C:\Users\rmorales\PycharmProjects\6ix9ine\6ix9ine-rap-sheet-docs\sharing-is-good\OPUS-TASK-integrations.md
+Now read your specific task: C:\Users\rmorales\PycharmProjects\6ix9ine\docs\sharing-is-good\OPUS-TASK-integrations.md
 
 Do all tasks listed.
 If you are NOT 95% confident on anything in the STOPPING CONDITIONS section, STOP and ask.

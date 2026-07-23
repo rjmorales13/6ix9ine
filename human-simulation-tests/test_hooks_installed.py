@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def test_claude_settings_has_real_hook_schema():
-    # Regression test for bug #5 (6ix9ine-rap-sheet-docs/handoff-road-to-gummo.md): the old
+    # Regression test for bug #5 (docs/planning/handoff-road-to-gummo.md): the old
     # implementation wrote to a standalone ~/.claude/hooks.json that Claude Code never reads.
     # Real hook config lives in the "hooks" key inside ~/.claude/settings.json.
     settings_file = Path.home() / ".claude" / "settings.json"
@@ -29,7 +29,7 @@ def test_claude_settings_has_real_hook_schema():
 
 
 def test_opencode_plugin_installed():
-    # Regression test for bug #7 (6ix9ine-rap-sheet-docs/handoff-road-to-gummo.md): the old
+    # Regression test for bug #7 (docs/planning/handoff-road-to-gummo.md): the old
     # implementation wrote to ~/.opencode/plugin/ (singular -- just where the opencode binary
     # itself lives, not a config/plugin-loading location) using made-up hook names
     # (beforeCommand/afterCommand) that don't exist in the real @opencode-ai/plugin API. Real

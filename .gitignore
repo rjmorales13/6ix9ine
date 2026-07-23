@@ -13,7 +13,6 @@ coverage/
 *.sock
 state.json
 .claude/settings.local.json
-README-WIP.md
 build/
 dist/
 *.spec

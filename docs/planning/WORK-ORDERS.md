@@ -55,15 +55,15 @@ docs/[agent-name]-[docs-type]
 **Tasks (In Order):**
 
 #### Task 1: Research & Outline Comparison Post
-- **File to review:** `/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/STRATEGY-SUMMARY.md` (lines 1-100)
+- **File to review:** `/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/STRATEGY-SUMMARY.md` (lines 1-100)
 - **Research:** Compare 6ix9ine vs. LidRun, Macchiato, adrafinil on features, cost, transparency
-- **Output:** Create outline document `blog-posts/comparison-outline.md`
+- **Output:** Create outline document `docs/marketing/blog/comparison-outline.md`
 - **Branch:** `docs/fable-marketing-content`
 - **Deliverable:** Markdown outline (500 words) with structure, key points, differentiators
 
 #### Task 2: Write Comparison Blog Post (PRIMARY)
 - **Input:** Use outline from Task 1
-- **File to reference:** `/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/step-3-revised-critique-unified-strategy.md` (lines 80-120, "Positioning: The Core Message")
+- **File to reference:** `/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/step-3-revised-critique-unified-strategy.md` (lines 80-120, "Positioning: The Core Message")
 - **Write:** Blog post "Caffeinate vs. LidRun vs. Macchiato vs. 6ix9ine: Which Keep-Awake Tool Should You Use?"
 - **Target:** 1200-1500 words, SEO-optimized for "keep mac awake claude code"
 - **Sections:**
@@ -74,7 +74,7 @@ docs/[agent-name]-[docs-type]
   - 6ix9ine positioning (free + transparent + multi-agent)
   - Comparison table (features, cost, trust, support)
   - When to use each
-- **Output file:** `blog-posts/keep-mac-awake-comparison.md`
+- **Output file:** `docs/marketing/blog/keep-mac-awake-comparison.md`
 - **Branch:** Same as Task 1 (`docs/fable-marketing-content`)
 - **Deliverable:** Full blog post ready for Dev.to, Medium, or GitHub Pages
 
@@ -89,13 +89,13 @@ docs/[agent-name]-[docs-type]
   - Why open-source for privilege escalation
   - Code snippet examples (how it works)
   - Trust & auditability for end users
-- **Output file:** `blog-posts/architecture-transparency.md`
+- **Output file:** `docs/marketing/blog/architecture-transparency.md`
 - **Branch:** `docs/fable-transparency-post`
 - **Deliverable:** Technical blog post suitable for HN/Dev.to
 
 #### Task 4: Create Social Media Content Pack
 - **Input:** Use Comparison Post + Architecture Post
-- **Create:** File `social-media/twitter-threads.md`
+- **Create:** File `docs/marketing/social/twitter-threads.md`
 - **Content:**
   - 5-tweet thread: Problem → Solution → Features → Transparency → CTA
   - 3 Reddit post templates (for r/macOS, r/devtools, r/programming)
@@ -123,9 +123,9 @@ Added core marketing content for 6ix9ine launch:
 - Social media content pack (Twitter, Reddit, PH, IH)
 
 ## Files Changed
-- blog-posts/keep-mac-awake-comparison.md
-- blog-posts/architecture-transparency.md
-- social-media/twitter-threads.md
+- docs/marketing/blog/keep-mac-awake-comparison.md
+- docs/marketing/blog/architecture-transparency.md
+- docs/marketing/social/twitter-threads.md
 
 ## Related Issues
 Links to: step-3-revised-critique-unified-strategy.md positioning guidance
@@ -165,7 +165,7 @@ Links to: step-3-revised-critique-unified-strategy.md positioning guidance
 **Objective:** Build Claude Code skill/plugin and MCP marketplace listing
 
 **Prerequisites:**
-- Review: `/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/step-3-revised-critique-unified-strategy.md` (lines 110-140, "Phase 2.5: Early Ecosystem Integration")
+- Review: `/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/step-3-revised-critique-unified-strategy.md` (lines 110-140, "Phase 2.5: Early Ecosystem Integration")
 
 **Tasks (In Order):**
 
@@ -335,7 +335,7 @@ Implements MCP server allowing Aider, OpenCode, and other MCP clients to integra
 **Objective:** Create production-ready Homebrew formula and optimize build
 
 **Prerequisites:**
-- Review: `/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/STRATEGY-SUMMARY.md` (lines 140-180, "Phase 1: Foundation")
+- Review: `/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/STRATEGY-SUMMARY.md` (lines 140-180, "Phase 1: Foundation")
 
 **Tasks (In Order):**
 
@@ -502,7 +502,7 @@ brew uninstall 6ix9ine
 
 **Prerequisites:**
 - Review: Project README (main daemon functionality)
-- Review: `/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/STRATEGY-SUMMARY.md` (lines 240-290, "Phase 2: Early Ecosystem Moves")
+- Review: `/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/STRATEGY-SUMMARY.md` (lines 240-290, "Phase 2: Early Ecosystem Moves")
 
 **Tasks (In Order):**
 
@@ -706,7 +706,7 @@ New `6ix9ine diagnose --analyze` command uses DeepSeek to provide intelligent tr
 **Objective:** Add smart scheduling, thermal awareness, and Gemini-powered optimization
 
 **Prerequisites:**
-- Review: `/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/step-3-revised-critique-unified-strategy.md` (lines 160-200, "What 6ix9ine's Real Edge Is")
+- Review: `/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/step-3-revised-critique-unified-strategy.md` (lines 160-200, "What 6ix9ine's Real Edge Is")
 
 **Tasks (In Order):**
 
