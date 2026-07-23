@@ -63,6 +63,16 @@ THERMAL_WARM_MAX = 80.0
 THERMAL_HOT_MAX = 95.0
 
 
+# Daemon start/stop readiness polling. After `launchctl load` returns, the
+# LaunchAgent still needs a moment to fork and open its cli.sock socket, so a
+# start is only "ok" once the daemon is actually reachable (not merely because
+# launchctl exited 0 — legacy `launchctl load` can exit 0 while doing nothing).
+DAEMON_START_POLL_ATTEMPTS = 50
+DAEMON_START_POLL_DELAY = 0.2  # seconds -> up to ~10s total
+DAEMON_STOP_POLL_ATTEMPTS = 25
+DAEMON_STOP_POLL_DELAY = 0.2  # seconds -> up to ~5s total
+
+
 def thermal_threshold() -> float:
     # Cutout fires at/above this temperature; the daemon releases all sessions.
     return float(os.environ.get("SIXNINE_THERMAL_THRESHOLD", "85"))
