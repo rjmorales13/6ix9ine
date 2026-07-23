@@ -439,25 +439,144 @@ def test_build_setup_helper_script_includes_owner_uid_and_key_paths(tmp_path):
     assert "launchctl load" in script
 
 
-def test_cmd_setup_privileged_helper_maps_failure_to_permission_denied():
+def test_build_setup_helper_script_boots_out_stale_registration_before_load(tmp_path):
+    # The stale KeepAlive process must be booted out BEFORE the (re)load,
+    # otherwise `launchctl load`/`bootstrap` exit 0 while the old root process
+    # keeps running old code. Verify the bootout is present AND ordered first.
+    script = cli.build_setup_helper_script(project_root=tmp_path, owner_uid=501)
+    assert "launchctl bootout system" in script
+    bootout_idx = script.index("launchctl bootout system")
+    load_idx = script.rindex("launchctl load")
+    assert bootout_idx < load_idx, "bootout must precede load"
+    # Guarded so `set -e` doesn't abort when nothing is currently loaded.
+    assert "|| true" in script.splitlines()[
+        next(i for i, ln in enumerate(script.splitlines()) if "launchctl bootout system" in ln)
+    ]
+
+
+def _helper_send_request(version):
+    """Fake helper socket that answers get_state with the given version, or
+    raises ConnectionError when version is None (socket dark)."""
+
+    def send_request(sock_path, payload, timeout=5.0):
+        assert payload == {"method": "get_state"}
+        if version is None:
+            raise ConnectionError("no helper")
+        return {"ok": True, "sleep_blocked": False, "version": version}
+
+    return send_request
+
+
+def test_cmd_setup_privileged_helper_maps_script_failure_to_permission_denied():
     def fake_run(cmd, **kwargs):
         return SimpleNamespace(returncode=1, stdout="", stderr="not authorized")
 
-    _, exit_code = cli.cmd_setup_privileged_helper(run=fake_run, project_root=None)
+    response, exit_code = cli.cmd_setup_privileged_helper(
+        run=fake_run,
+        project_root=None,
+        send_request=_helper_send_request(shared.VERSION),
+        sleep=lambda _d: None,
+    )
+    assert response["ok"] is False
     assert exit_code == shared.EXIT_PERMISSION_DENIED
 
 
-def test_cmd_uninstall_helper_resets_pmset_in_script():
+def test_cmd_setup_privileged_helper_ok_when_current_version_answers():
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    response, exit_code = cli.cmd_setup_privileged_helper(
+        run=fake_run,
+        project_root=None,
+        send_request=_helper_send_request(shared.VERSION),
+        sleep=lambda _d: None,
+    )
+    assert response["ok"] is True
+    assert response["helper_version"] == shared.VERSION
+    assert exit_code == shared.EXIT_OK
+
+
+def test_cmd_setup_privileged_helper_fails_when_stale_old_version_still_answers():
+    # The exact bug: script exits 0, socket is reachable, but it's the OLD
+    # process answering. Bare reachability would rubber-stamp this; the version
+    # handshake must reject it.
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    response, exit_code = cli.cmd_setup_privileged_helper(
+        run=fake_run,
+        project_root=None,
+        send_request=_helper_send_request("0.9.0-old"),
+        sleep=lambda _d: None,
+    )
+    assert response["ok"] is False
+    assert "0.9.0-old" in response["error"]
+    assert shared.VERSION in response["error"]
+    assert exit_code == shared.EXIT_GENERAL_ERROR
+
+
+def test_cmd_setup_privileged_helper_fails_when_socket_never_answers():
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    response, exit_code = cli.cmd_setup_privileged_helper(
+        run=fake_run,
+        project_root=None,
+        send_request=_helper_send_request(None),
+        sleep=lambda _d: None,
+    )
+    assert response["ok"] is False
+    assert "did not become reachable" in response["error"]
+    assert exit_code == shared.EXIT_GENERAL_ERROR
+
+
+def test_cmd_uninstall_helper_uses_set_e_and_bootout_in_script():
     calls = []
 
     def fake_run(cmd, **kwargs):
         calls.append(cmd)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    _, exit_code = cli.cmd_uninstall_helper(run=fake_run)
+    response, exit_code = cli.cmd_uninstall_helper(
+        run=fake_run,
+        send_request=_helper_send_request(None),  # socket goes dark -> success
+        sleep=lambda _d: None,
+    )
     script = calls[0][-1]
+    assert script.splitlines()[0] == "set -e"
+    assert "launchctl bootout system" in script
     assert "pmset disablesleep 0" in script
+    assert response["ok"] is True
     assert exit_code == shared.EXIT_OK
+
+
+def test_cmd_uninstall_helper_fails_when_helper_still_reachable():
+    # Teardown script exits 0 but the root helper is still answering its socket
+    # -> the teardown did not really complete.
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    response, exit_code = cli.cmd_uninstall_helper(
+        run=fake_run,
+        send_request=_helper_send_request(shared.VERSION),  # still reachable
+        sleep=lambda _d: None,
+    )
+    assert response["ok"] is False
+    assert "still reachable" in response["error"]
+    assert exit_code == shared.EXIT_GENERAL_ERROR
+
+
+def test_cmd_uninstall_helper_maps_script_failure_to_permission_denied():
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=1, stdout="", stderr="not authorized")
+
+    response, exit_code = cli.cmd_uninstall_helper(
+        run=fake_run,
+        send_request=_helper_send_request(None),
+        sleep=lambda _d: None,
+    )
+    assert response["ok"] is False
+    assert exit_code == shared.EXIT_PERMISSION_DENIED
 
 
 # --- top-level dispatch ---

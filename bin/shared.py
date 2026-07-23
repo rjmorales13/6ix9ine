@@ -72,6 +72,18 @@ DAEMON_START_POLL_DELAY = 0.2  # seconds -> up to ~10s total
 DAEMON_STOP_POLL_ATTEMPTS = 25
 DAEMON_STOP_POLL_DELAY = 0.2  # seconds -> up to ~5s total
 
+# Privileged-helper setup/teardown readiness polling. After the sudo script
+# runs, the just-registered LaunchDaemon needs a moment to (re)fork and open its
+# root socket. Setup success is confirmed by a VERSION HANDSHAKE — the process
+# now answering the socket must report the CURRENT version, not merely be
+# reachable: after `brew upgrade` a stale KeepAlive helper keeps answering the
+# same socket with OLD code, so a bare reachability check would rubber-stamp the
+# exact staleness bug. Teardown success is confirmed by the socket going dark.
+HELPER_START_POLL_ATTEMPTS = 50
+HELPER_START_POLL_DELAY = 0.2  # seconds -> up to ~10s total
+HELPER_STOP_POLL_ATTEMPTS = 25
+HELPER_STOP_POLL_DELAY = 0.2  # seconds -> up to ~5s total
+
 
 def thermal_threshold() -> float:
     # Cutout fires at/above this temperature; the daemon releases all sessions.
