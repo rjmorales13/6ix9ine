@@ -27,6 +27,22 @@ class Session:
     reason: str
     timestamp: float
     pid: Optional[int] = None
+    # PID-reuse guard for `pid`, mirroring CommandPid's own pid/create_time
+    # pair. Three states matter to prune_dead():
+    #   pid is None                        -> not eligible for pid-based pruning at all
+    #                                          (e.g. acquire()-based sessions, which
+    #                                          deliberately never get a pid -- see
+    #                                          daemon_commands.handle_acquire)
+    #   pid is not None, create_time is None -> legacy/unguarded liveness check
+    #                                          (Claude's process-sniffed sessions,
+    #                                          set via _sniff_agents -- must NOT
+    #                                          start being pruned differently)
+    #   pid is not None, create_time is not None -> guarded liveness check: alive
+    #                                          only if the pid exists AND its
+    #                                          current create_time still matches
+    #                                          (closes the OS PID-reuse hole for
+    #                                          e.g. OpenCode's acquire --pid)
+    create_time: Optional[float] = None
     # False once the owning agent turn has ended (RELEASE called); the session
     # is kept alive only by any live command_pids until they're pruned.
     turn_open: bool = True
@@ -58,6 +74,7 @@ class SessionRegistry:
         agent: str,
         reason: str = "",
         pid: Optional[int] = None,
+        create_time: Optional[float] = None,
         now: Optional[float] = None,
     ) -> Session:
         if agent not in shared.VALID_AGENTS:
@@ -68,6 +85,7 @@ class SessionRegistry:
             reason=reason,
             timestamp=now if now is not None else time.time(),
             pid=pid,
+            create_time=create_time,
         )
         existing = self._sessions.get(key)
         if existing is not None:
@@ -147,11 +165,69 @@ class SessionRegistry:
         self._holds.clear()
         return released
 
-    def prune_dead(self, is_alive: Callable[[int], bool]) -> list[str]:
-        return self._prune(lambda session: session.pid is not None and not is_alive(session.pid))
+    def prune_dead(
+        self,
+        is_alive: Callable[[int], bool],
+        create_time_fn: Optional[Callable[[int], Optional[float]]] = None,
+    ) -> list[str]:
+        """Remove sessions whose tracked pid is no longer alive.
+
+        See the Session.create_time docstring for the three branches this
+        implements. The guarded branch (pid + create_time both set) mirrors
+        daemon.py's is_command_pid_alive tolerance check exactly -- a pid is
+        only "the same process we tracked" if it exists AND its current
+        create_time matches ours within 1.0s, so an OS PID-recycle can't
+        resurrect a dead session under someone else's process.
+        """
+
+        def is_dead(session: Session) -> bool:
+            if session.pid is None:
+                return False
+            if not is_alive(session.pid):
+                return True
+            if session.create_time is None:
+                # Legacy/unguarded path (e.g. Claude's sniffed sessions):
+                # pid liveness alone is sufficient, unchanged from before.
+                return False
+            current_create_time = create_time_fn(session.pid) if create_time_fn else None
+            if current_create_time is None:
+                return True
+            return abs(current_create_time - session.create_time) > 1.0
+
+        return self._prune(is_dead)
 
     def prune_idle(self, is_idle: Callable[[int], bool]) -> list[str]:
-        return self._prune(lambda session: session.pid is not None and is_idle(session.pid))
+        # Guarded acquire sessions (pid + create_time -- e.g. OpenCode's
+        # long-lived plugin host, tracked via `acquire --pid`) are exempt from
+        # CPU-idle detection entirely: they're often near-0% CPU while
+        # genuinely waiting on the model mid-turn, and have their own explicit
+        # release signal ("session.idle" from the plugin). Only pid-only
+        # sessions without a create_time (Claude's sniffed sessions, which have
+        # no independent release signal) are eligible for idle detection. The
+        # `and` short-circuits before is_idle() is ever called for a guarded
+        # session, so it also never touches the CPU-percent sampler for one.
+        return self._prune(
+            lambda session: session.pid is not None
+            and session.create_time is None
+            and is_idle(session.pid)
+        )
+
+    def prune_max_age(self, max_age_seconds: float, now: Optional[float] = None) -> list[str]:
+        """Hard backstop: force-remove any session older than max_age_seconds,
+        regardless of pid/create_time/command_pid state.
+
+        Defense-in-depth for a truly abandoned session that somehow evades
+        every other prune path (e.g. a crashed agent process whose pid was
+        recycled by the OS before the next tick). acquire() refreshes
+        `timestamp` on every re-acquire, so an actively-used session (repeated
+        chat.message-style acquires) never ages out -- only one that never
+        got a matching release does.
+        """
+        now = now if now is not None else time.time()
+        keys = [key for key, session in self._sessions.items() if now - session.timestamp > max_age_seconds]
+        for key in keys:
+            del self._sessions[key]
+        return keys
 
     def _prune(self, should_remove: Callable[[Session], bool]) -> list[str]:
         keys = [key for key, session in self._sessions.items() if should_remove(session)]

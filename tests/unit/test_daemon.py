@@ -380,6 +380,12 @@ async def test_track_in_mutating_commands_reconciles_and_persists(tmp_path):
 async def test_daemon_tick_prunes_dead_command_pids(tmp_path):
     """tick() calls prune_command_pids to remove dead tracked PIDs."""
     daemon, helper_calls, _, _ = make_daemon(tmp_path)
+    # Keep tick()'s own `now` aligned with the synthetic timestamp below --
+    # otherwise the real wall clock reads as ~decades past it, and the
+    # session_max_age_hours() hard backstop (unrelated to what this test is
+    # actually exercising) would force-release the session before the
+    # command-pid pruning under test ever runs.
+    daemon._now = lambda: 1000.0
     daemon.registry.acquire("key-1", agent="claude", now=1000.0)
 
     # Track two PIDs, only 2001 is alive
@@ -463,6 +469,10 @@ async def test_pid_reuse_guard_with_create_time_mismatch(tmp_path):
 async def test_idle_tracker_prunes_tracked_pids_on_idle_timeout(tmp_path):
     """Idle timeout applies to tracked command PIDs too (zero-CPU sleep 3600 &)."""
     daemon, helper_calls, _, _ = make_daemon(tmp_path)
+    # See test_daemon_tick_prunes_dead_command_pids for why this alignment
+    # is needed: without it, the session_max_age_hours() backstop force-
+    # releases the session before the idle-timeout behavior under test runs.
+    daemon._now = lambda: 1000.0
     daemon.idle_tracker.idle_timeout_seconds = 0  # idle as soon as observed with 0% CPU
     daemon.registry.acquire("key-1", agent="claude", now=1000.0)
 
@@ -492,6 +502,178 @@ async def test_idle_tracker_prunes_tracked_pids_on_idle_timeout(tmp_path):
     # this is a manual integration test.
     # For now just verify the session is still there (we didn't filter tracked PIDs yet)
     assert daemon.registry.count() == 1
+
+
+# -- OpenCode acquire --pid: PID-reuse guard + prune_idle exemption + max age --
+
+
+@pytest.mark.asyncio
+async def test_acquire_with_pid_resolves_create_time_via_daemon(tmp_path):
+    daemon, _, _, _ = make_daemon(tmp_path)
+    daemon._create_time_fn = lambda pid: {4242: 777.0}.get(pid)
+
+    response = await daemon.handle_request(
+        {"cmd": "ACQUIRE", "session": "k1", "tool": "opencode", "pid": 4242}, peer_pid=99999
+    )
+
+    assert response["ok"] is True
+    session = daemon.registry.sessions()["k1"]
+    assert session.pid == 4242
+    assert session.create_time == 777.0
+
+
+@pytest.mark.asyncio
+async def test_acquire_never_adopts_peer_pid_even_when_no_pid_field_sent(tmp_path):
+    """peer_pid is part of the shared IPC Handler signature but must never
+    be adopted into ACQUIRE -- the pid field comes only from the request
+    body's explicit `pid`, which the CLI populates from `--pid`."""
+    daemon, _, _, _ = make_daemon(tmp_path)
+    daemon._create_time_fn = lambda pid: 1.0
+
+    response = await daemon.handle_request(
+        {"cmd": "ACQUIRE", "session": "k1", "tool": "claude"}, peer_pid=13579
+    )
+
+    assert response["ok"] is True
+    session = daemon.registry.sessions()["k1"]
+    assert session.pid is None
+    assert session.pid != 13579
+
+
+@pytest.mark.asyncio
+async def test_tick_prune_dead_uses_create_time_guard_for_pid_reuse(tmp_path):
+    """Regression test for the naive-fix's PID-reuse hazard: a dead OpenCode
+    process's pid gets recycled by the OS for an unrelated process before
+    the next tick. pid_exists_fn alone would say "alive"; the create_time
+    guard must still catch the mismatch and prune it."""
+    daemon, helper_calls, _, _ = make_daemon(tmp_path, pid_exists_fn=lambda pid: True)
+    daemon._now = lambda: 1000.0
+    daemon._create_time_fn = lambda pid: 50.0  # the ORIGINAL create_time at acquire time
+
+    await daemon.handle_request(
+        {"cmd": "ACQUIRE", "session": "k1", "tool": "opencode", "pid": 4242}, peer_pid=1
+    )
+    assert daemon.registry.sessions()["k1"].create_time == 50.0
+
+    # OS recycles pid 4242 for a new, unrelated process with a different
+    # create_time. pid_exists_fn still says True, but the create_time no
+    # longer matches.
+    daemon._create_time_fn = lambda pid: 999.0
+    helper_calls.clear()
+
+    await daemon.tick()
+
+    assert daemon.registry.count() == 0
+    assert {"method": "set_sleep_blocked", "params": {"blocked": False}} in helper_calls
+
+
+@pytest.mark.asyncio
+async def test_tick_prune_dead_keeps_guarded_session_when_create_time_matches(tmp_path):
+    daemon, _, _, _ = make_daemon(tmp_path, pid_exists_fn=lambda pid: True)
+    daemon._now = lambda: 1000.0
+    daemon._create_time_fn = lambda pid: 50.0
+
+    await daemon.handle_request(
+        {"cmd": "ACQUIRE", "session": "k1", "tool": "opencode", "pid": 4242}, peer_pid=1
+    )
+
+    await daemon.tick()
+
+    assert daemon.registry.count() == 1
+    assert "k1" in daemon.registry.sessions()
+
+
+@pytest.mark.asyncio
+async def test_tick_does_not_prune_guarded_opencode_session_despite_idle_cpu(tmp_path):
+    """The bug this whole fix targets: an OpenCode acquire --pid session
+    must NOT be pruned by CPU-idle detection just because the long-lived
+    host process is near-0% CPU while genuinely waiting on the model."""
+    daemon, _, _, _ = make_daemon(tmp_path, pid_exists_fn=lambda pid: True, cpu_percent_fn=lambda pid: 0.0)
+    daemon._now = lambda: 1000.0
+    daemon._create_time_fn = lambda pid: 50.0
+    daemon.idle_tracker.idle_timeout_seconds = 0  # idle as soon as a second sample confirms it
+
+    await daemon.handle_request(
+        {"cmd": "ACQUIRE", "session": "k1", "tool": "opencode", "pid": 4242}, peer_pid=1
+    )
+
+    await daemon.tick()
+    await daemon.tick()
+
+    assert daemon.registry.count() == 1
+    assert "k1" in daemon.registry.sessions()
+
+
+@pytest.mark.asyncio
+async def test_tick_max_age_backstop_force_releases_abandoned_session(tmp_path):
+    """Defense-in-depth: a session that somehow evades every other prune
+    path (e.g. its pid got reused right before every tick's check, or
+    pid_exists_fn itself is unreliable) still gets force-released once it's
+    older than session_max_age_hours()."""
+    daemon, helper_calls, _, _ = make_daemon(tmp_path, pid_exists_fn=lambda pid: True)
+    daemon._create_time_fn = lambda pid: 50.0
+    daemon._now = lambda: 1000.0
+
+    await daemon.handle_request(
+        {"cmd": "ACQUIRE", "session": "k1", "tool": "opencode", "pid": 4242}, peer_pid=1
+    )
+    helper_calls.clear()
+
+    # Advance well past the default 4h threshold, keeping create_time
+    # matching throughout (so this genuinely isolates the max-age backstop,
+    # not the create_time guard).
+    daemon._now = lambda: 1000.0 + (5 * 3600.0)
+
+    await daemon.tick()
+
+    assert daemon.registry.count() == 0
+    assert {"method": "set_sleep_blocked", "params": {"blocked": False}} in helper_calls
+
+
+@pytest.mark.asyncio
+async def test_tick_max_age_backstop_respects_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("SIXNINE_SESSION_MAX_AGE_HOURS", "1")
+    daemon, _, _, _ = make_daemon(tmp_path, pid_exists_fn=lambda pid: True)
+    daemon._create_time_fn = lambda pid: 50.0
+    daemon._now = lambda: 1000.0
+
+    await daemon.handle_request(
+        {"cmd": "ACQUIRE", "session": "k1", "tool": "opencode", "pid": 4242}, peer_pid=1
+    )
+
+    daemon._now = lambda: 1000.0 + (2 * 3600.0)  # past the overridden 1h threshold
+
+    await daemon.tick()
+
+    assert daemon.registry.count() == 0
+
+
+@pytest.mark.asyncio
+async def test_tick_max_age_backstop_does_not_age_out_repeatedly_reacquired_session(tmp_path):
+    """acquire() refreshes `timestamp` on every re-acquire (simulating
+    OpenCode's chat.message firing on every turn), so an actively-used
+    session never approaches the max-age backstop."""
+    daemon, _, _, _ = make_daemon(tmp_path, pid_exists_fn=lambda pid: True)
+    daemon._create_time_fn = lambda pid: 50.0
+    daemon._now = lambda: 1000.0
+
+    await daemon.handle_request(
+        {"cmd": "ACQUIRE", "session": "k1", "tool": "opencode", "pid": 4242}, peer_pid=1
+    )
+
+    # Re-acquire well past the default 4h threshold from the ORIGINAL
+    # timestamp, but each hop is well within it -- simulating a long-running
+    # but continuously active turn.
+    for hop in range(1, 6):
+        daemon._now = lambda hop=hop: 1000.0 + (hop * 3600.0)
+        await daemon.handle_request(
+            {"cmd": "ACQUIRE", "session": "k1", "tool": "opencode", "pid": 4242}, peer_pid=1
+        )
+
+    await daemon.tick()
+
+    assert daemon.registry.count() == 1
+    assert "k1" in daemon.registry.sessions()
 
 
 @pytest.mark.asyncio

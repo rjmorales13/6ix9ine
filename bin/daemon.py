@@ -202,7 +202,9 @@ class Daemon:
         now = self._now()
 
         if cmd == "ACQUIRE":
-            response = daemon_commands.handle_acquire(self.registry, request, now=now)
+            response = daemon_commands.handle_acquire(
+                self.registry, request, create_time_fn=self._create_time_fn, now=now
+            )
         elif cmd == "RELEASE":
             response = daemon_commands.handle_release(self.registry, request)
         elif cmd == "HOLD":
@@ -233,13 +235,23 @@ class Daemon:
         if self._sniff_agents():
             changed = True
 
-        if self.registry.prune_dead(self._pid_exists):
+        if self.registry.prune_dead(self._pid_exists, create_time_fn=self._create_time_fn):
             changed = True
 
+        # Only sessions without a create_time (Claude's process-sniffed
+        # sessions, currently the only consumer of prune_idle) feed the
+        # CPU-idle detector. Guarded acquire sessions (pid + create_time --
+        # e.g. OpenCode's chat.message --pid) are exempt: they have their own
+        # release signal (session.idle from the plugin) and are frequently
+        # near-0% CPU while genuinely waiting on the model mid-turn, so
+        # CPU-idle pruning them would put the Mac to sleep during active work.
+        # SessionRegistry.prune_idle() enforces this same exemption itself;
+        # this local dict just keeps the idle_tracker bookkeeping below
+        # consistent with what's actually eligible.
         idle_pids = {
             session.pid: session.key
             for session in self.registry.sessions().values()
-            if session.pid is not None
+            if session.pid is not None and session.create_time is None
         }
 
         def is_idle(pid: int) -> bool:
@@ -263,6 +275,17 @@ class Daemon:
             return abs(current_create_time - cp.create_time) <= 1.0
 
         if self.registry.prune_command_pids(is_command_pid_alive):
+            changed = True
+
+        # Hard backstop, defense-in-depth: force-release any session older
+        # than session_max_age_hours() regardless of pid/create_time state.
+        # Every other prune path above depends on some liveness signal being
+        # reachable (pid_exists, create_time, CPU sampling); this one doesn't,
+        # so it still catches a session that somehow evades all of them.
+        # acquire() refreshes `timestamp` on every re-acquire, so an
+        # actively-used session (repeated chat.message-style acquires) never
+        # approaches this threshold -- only a truly abandoned one does.
+        if self.registry.prune_max_age(shared.session_max_age_hours() * 3600.0, now=now):
             changed = True
 
         if self.registry.expire_holds(now=now):

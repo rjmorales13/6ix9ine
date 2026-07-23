@@ -97,6 +97,29 @@ def test_install_uses_real_hook_names_not_placeholders(monkeypatch, tmp_path):
     assert "input.sessionID" in content
 
 
+def test_install_passes_process_pid_to_acquire(monkeypatch, tmp_path):
+    # Regression test for the never-cleaned-up-session sleep leak: if
+    # OpenCode ever fails to emit "session.idle" cleanly (crash, force-quit,
+    # connection drop), the daemon has no pid to fall back on and the
+    # session blocks sleep forever. Passing the plugin host's own
+    # process.pid lets the daemon guard-prune it via create_time on top of
+    # the existing UUID-based release path.
+    project_dir, _ = _point_at(monkeypatch, tmp_path)
+    project_dir.mkdir(parents=True)
+
+    opencode.install()
+
+    content = (project_dir / "plugins" / "6ix9ine-hook.ts").read_text()
+    assert "--pid" in content
+    assert "process.pid.toString()" in content
+    # The --pid flag must be wired into the chat.message (acquire) call, not
+    # the release call.
+    acquire_call = content.split('"chat.message"')[1].split("event:")[0]
+    assert "--pid" in acquire_call
+    release_call = content.split("event:")[1]
+    assert "--pid" not in release_call
+
+
 def test_install_falls_back_to_home_level(monkeypatch, tmp_path):
     _, home_dir = _point_at(monkeypatch, tmp_path)
     home_dir.mkdir(parents=True)

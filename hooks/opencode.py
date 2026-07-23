@@ -30,6 +30,17 @@ PLUGIN_FILENAME = "6ix9ine-hook.ts"
 # turn instead of once at install time.
 _CLI_PATH = "6ix9ine"
 
+# PID sourcing: process.pid inside the plugin factory is the long-lived
+# OpenCode host process's own pid, NOT a per-call worker/child. Verified
+# against the actually-installed @opencode-ai/plugin's PluginInput type
+# (dist/index.d.ts, v1.4.10 on this machine): it exposes `client`, `project`,
+# `directory`, `worktree`, `serverUrl`, `$` -- nothing suggesting the plugin
+# module runs in a separate worker/child process per call, and there's no
+# child_process/worker_threads usage anywhere in the installed package's
+# compiled output. The daemon resolves this pid's create_time server-side
+# (see daemon_commands.handle_acquire) to guard against OS PID reuse before
+# ever treating it as "still alive" -- see session_registry.py's
+# Session.create_time docstring.
 PLUGIN_TEMPLATE = (
     'import { execFileSync } from "node:child_process"\n'
     "\n"
@@ -39,7 +50,7 @@ PLUGIN_TEMPLATE = (
     "  return {\n"
     '    "chat.message": async (input) => {\n'
     "      try {\n"
-    '        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn"], { timeout: 3000, stdio: "ignore" })\n'
+    '        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn", "--pid", process.pid.toString()], { timeout: 3000, stdio: "ignore" })\n'
     "      } catch (err) {\n"
     "        // 6ix9ine failing must never break an OpenCode turn\n"
     "      }\n"

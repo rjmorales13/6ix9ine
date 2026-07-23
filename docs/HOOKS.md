@@ -129,8 +129,17 @@ the documented, primary convention.
 
 | Event | Action |
 |-------|--------|
-| `chat.message` | reads `input.sessionID`, runs `6ix9ine acquire <sessionID> --tool opencode --reason "opencode turn"` |
+| `chat.message` | reads `input.sessionID`, runs `6ix9ine acquire <sessionID> --tool opencode --reason "opencode turn" --pid <process.pid>` |
 | `event` (filtered to `type === "session.idle"`) | reads `event.properties.sessionID`, runs `6ix9ine release <sessionID>` |
+
+`--pid` is the plugin host's own `process.pid` (the long-lived OpenCode process, not a per-call
+worker). It's a defense-in-depth cleanup path, not a change to session identity: sessions are
+still refcounted purely by their UUID `session-key`, and a clean `session.idle` release is still
+the primary path. If OpenCode ever fails to emit `session.idle` (crash, force-quit, connection
+drop), the daemon can fall back to pid-based cleanup — guarded against OS PID reuse via
+`create_time` (resolved server-side, never trusted from the client) and exempt from CPU-idle
+pruning (the host process is often near-0% CPU while genuinely waiting on the model mid-turn). See
+[TROUBLESHOOTING-HOOKS.md](TROUBLESHOOTING-HOOKS.md) for the full incident this closes.
 
 ### Installer Behavior
 
@@ -154,7 +163,7 @@ export const SixNinePlugin = async () => {
   return {
     "chat.message": async (input) => {
       try {
-        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn"], { timeout: 3000, stdio: "ignore" })
+        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn", "--pid", process.pid.toString()], { timeout: 3000, stdio: "ignore" })
       } catch (err) {
         // 6ix9ine failing must never break an OpenCode turn
       }

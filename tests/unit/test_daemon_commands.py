@@ -30,6 +30,108 @@ def test_handle_acquire_rejects_unknown_agent():
     assert response["ok"] is False
 
 
+# -- ACQUIRE with an explicit pid (e.g. OpenCode's chat.message --pid) ----
+
+
+def test_handle_acquire_with_pid_resolves_create_time_server_side():
+    """The daemon must resolve create_time itself from the pid -- never
+    trust a client-sent create_time (there isn't one in the request at all)."""
+    registry = SessionRegistry()
+
+    def fake_create_time_fn(pid):
+        return {4242: 12345.0}.get(pid)
+
+    response = daemon_commands.handle_acquire(
+        registry,
+        {"session": "key-1", "tool": "opencode", "pid": 4242},
+        create_time_fn=fake_create_time_fn,
+        now=1000.0,
+    )
+
+    assert response["ok"] is True
+    session = registry.sessions()["key-1"]
+    assert session.pid == 4242
+    assert session.create_time == 12345.0
+
+
+def test_handle_acquire_without_pid_stores_no_pid_or_create_time():
+    """Unchanged default path (e.g. Claude's hook-acquire): no pid at all."""
+    registry = SessionRegistry()
+    response = daemon_commands.handle_acquire(
+        registry, {"session": "key-1", "tool": "claude"}, create_time_fn=lambda pid: 1.0, now=1000.0
+    )
+    assert response["ok"] is True
+    session = registry.sessions()["key-1"]
+    assert session.pid is None
+    assert session.create_time is None
+
+
+def test_handle_acquire_with_pid_falls_back_to_no_pid_when_create_time_unresolvable():
+    """If create_time_fn can't resolve a create_time for the given pid (the
+    process already exited / a race), storing the bare pid with no
+    create_time would silently drop into prune_dead's UNGUARDED legacy
+    branch (meant only for Claude's sniffed sessions) -- reintroducing the
+    exact PID-reuse hole this fix closes. Must fall back to no pid at all."""
+    registry = SessionRegistry()
+    response = daemon_commands.handle_acquire(
+        registry,
+        {"session": "key-1", "tool": "opencode", "pid": 9999},
+        create_time_fn=lambda pid: None,
+        now=1000.0,
+    )
+    assert response["ok"] is True
+    session = registry.sessions()["key-1"]
+    assert session.pid is None
+    assert session.create_time is None
+
+
+def test_handle_acquire_with_pid_and_no_create_time_fn_falls_back_to_no_pid():
+    registry = SessionRegistry()
+    response = daemon_commands.handle_acquire(
+        registry, {"session": "key-1", "tool": "opencode", "pid": 9999}, now=1000.0
+    )
+    assert response["ok"] is True
+    session = registry.sessions()["key-1"]
+    assert session.pid is None
+
+
+def test_handle_acquire_ignores_client_sent_create_time():
+    """A client-sent create_time field must be ignored entirely -- only the
+    server-resolved value (via create_time_fn) is ever trusted."""
+    registry = SessionRegistry()
+
+    def fake_create_time_fn(pid):
+        return 555.0
+
+    response = daemon_commands.handle_acquire(
+        registry,
+        {"session": "key-1", "tool": "opencode", "pid": 4242, "create_time": 1.0},
+        create_time_fn=fake_create_time_fn,
+        now=1000.0,
+    )
+
+    assert response["ok"] is True
+    assert registry.sessions()["key-1"].create_time == 555.0
+
+
+def test_handle_acquire_never_adopts_peer_pid():
+    """ACQUIRE has no notion of peer_pid at all -- daemon.py's
+    handle_request deliberately never forwards it into the request dict
+    handle_acquire receives. Confirm handle_acquire ignores any stray
+    peer_pid key entirely even if present."""
+    registry = SessionRegistry()
+    response = daemon_commands.handle_acquire(
+        registry,
+        {"session": "key-1", "tool": "opencode", "peer_pid": 424242},
+        create_time_fn=lambda pid: 1.0,
+        now=1000.0,
+    )
+    assert response["ok"] is True
+    session = registry.sessions()["key-1"]
+    assert session.pid is None
+    assert session.create_time is None
+
+
 def test_handle_release_reports_idle_when_last_session_released():
     registry = SessionRegistry()
     registry.acquire("key-1", agent="claude", now=1000.0)

@@ -18,7 +18,7 @@ $ 6ix9ine --version
 
 ## Session Management
 
-### `6ix9ine acquire <session-key> --tool <agent> [--reason <str>]`
+### `6ix9ine acquire <session-key> --tool <agent> [--reason <str>] [--pid <int>]`
 
 Acquire a sleep-blocking assertion. If this is the first active assertion, the daemon calls the helper to block sleep.
 
@@ -26,6 +26,7 @@ Acquire a sleep-blocking assertion. If this is the first active assertion, the d
 - `session-key` (required): Unique identifier for this session/turn. Use UUIDs.
 - `--tool` (required): Agent name. Must be one of: `claude`, `opencode`, `codex`, `antigravity`, `manual`
 - `--reason` (optional): Human-readable description of the task. Shown in TUI and lid-open summary.
+- `--pid` (optional): PID of the caller's long-lived host process (e.g. OpenCode's plugin passing its own `process.pid`). The daemon resolves this pid's `create_time` server-side and uses it as a defense-in-depth cleanup path if the caller ever fails to send an explicit `release` (crash, force-quit, connection drop) -- guarded against OS PID reuse and exempt from CPU-idle pruning. Session identity/refcounting is still purely by `session-key`; omit `--pid` for callers (like Claude's hook-acquire) that don't have a stable long-lived pid to offer.
 
 **Examples:**
 ```bash
