@@ -173,8 +173,6 @@ Why it needs this: keeping your Mac awake while docked with the lid closed requi
 
 No password prompt for this one. It registers 6ix9ine with any supported agent CLIs found on your machine (Claude Code, OpenCode, etc.) so sessions get tracked automatically.
 
-> ⚠️ **Known issue:** this command currently crashes with `ModuleNotFoundError: No module named 'hooks'` in the Homebrew-distributed binary — a packaging bug being tracked separately, not yet fixed. If you hit this, hooks aren't wired up yet; you can still use 6ix9ine manually via `6ix9ine acquire`/`6ix9ine release` in the meantime.
-
 **Step 3 — start the background daemon:**
 
 ```bash
