@@ -63,8 +63,13 @@ jobs:
           p.write_text(re.sub(r'VERSION = \"[^\"]+\"', f'VERSION = \"{version}\"', c))
           "
           
-          # Build each script using PyInstaller with strip
-          pyinstaller --onefile --strip --clean --name 6ix9ine bin/cli.py
+          # Build each script using PyInstaller with strip.
+          # cli.py imports the repo-root `hooks` package (from hooks import ...)
+          # at runtime; PyInstaller only searches the entry script's own dir
+          # (bin/) by default and never discovers hooks/ without the repo root
+          # (this step's CWD) on the analysis search path. Scoped to the CLI
+          # binary; the other three entrypoints do not import hooks.
+          pyinstaller --onefile --strip --clean --paths . --name 6ix9ine bin/cli.py
           pyinstaller --onefile --strip --clean --name t69 bin/tui.py
           pyinstaller --onefile --strip --clean --name com.rjmorales.6ix9ine.daemon bin/daemon.py
           pyinstaller --onefile --strip --clean --name com.rjmorales.6ix9ine.helper bin/helper.py
