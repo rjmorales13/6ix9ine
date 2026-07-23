@@ -61,8 +61,9 @@ The `6ix9ine install-hooks --agent claude` command:
 ### Manual Configuration
 
 If you prefer to configure manually, add a matcher group like this to your Claude Code
-`settings.json` (the `command` interpreter and script are generated per-machine by
-`hooks/claude.py`; this is the shape, not a literal value to paste):
+`settings.json` (the `command` path is resolved per-machine — prefer `shutil.which("6ix9ine")`,
+with a frozen-binary and a source-install fallback; this is the shape, not a literal value to
+paste):
 
 ```json
 {
@@ -72,8 +73,8 @@ If you prefer to configure manually, add a matcher group like this to your Claud
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/python3",
-            "args": ["-c", "<reads stdin JSON, calls 6ix9ine acquire>"]
+            "command": "/opt/homebrew/bin/6ix9ine",
+            "args": ["hook-acquire"]
           }
         ]
       }
@@ -83,8 +84,8 @@ If you prefer to configure manually, add a matcher group like this to your Claud
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/python3",
-            "args": ["-c", "<reads stdin JSON, calls 6ix9ine release>"]
+            "command": "/opt/homebrew/bin/6ix9ine",
+            "args": ["hook-release"]
           }
         ]
       }
@@ -92,6 +93,14 @@ If you prefer to configure manually, add a matcher group like this to your Claud
   }
 }
 ```
+
+**Do not use `"command": "<python interpreter>", "args": ["-c", "<inline code>"]`.** That was the
+original implementation and it locked a real user out of Claude Code entirely once run against the
+frozen, Homebrew-distributed binary — see
+[TROUBLESHOOTING-HOOKS.md](TROUBLESHOOTING-HOOKS.md) Case study 3 before building any new hook
+integration the same way. The invoked command must be `6ix9ine` itself (resolved to wherever it's
+actually installed) with a real subcommand as `args` — never an inline code string handed to a
+general-purpose interpreter that may not exist in the shipped binary.
 
 ---
 
@@ -342,7 +351,11 @@ The `6ix9ine install-hooks` command should:
 ## Adding a New Agent
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide on adding support for new agents, and
-read [TROUBLESHOOTING-HOOKS.md](TROUBLESHOOTING-HOOKS.md) **first** — both existing hook
-integrations above were complete no-ops the first time around, built against guessed APIs that
-were never checked against a real installation. That doc has the concrete verification checklist
-that would have caught both.
+read [TROUBLESHOOTING-HOOKS.md](TROUBLESHOOTING-HOOKS.md) **first** — it now documents three
+separate real incidents, two different classes of mistake. Claude Code and OpenCode were both
+complete no-ops the first time around, built against guessed APIs never checked against a real
+installation (Case studies 1–2). Claude Code's hooks were *later* fixed correctly, fully verified
+against source execution, and still ended up locking a real user out of the tool entirely — because
+the fix was never tested against the actual frozen binary real users run, only source (Case study
+3). Verifying an API guess and verifying a working feature keeps working in production are two
+different problems; that doc's checklist covers both.
