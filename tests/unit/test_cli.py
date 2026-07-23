@@ -271,27 +271,136 @@ def test_cmd_uninstall_hooks_restores_agent():
 # --- daemon / helper lifecycle plumbing ---
 
 
-def test_cmd_daemon_start_invokes_launchctl_load():
+@pytest.fixture
+def isolated_daemon_plist(tmp_path, monkeypatch):
+    """Redirect the daemon plist + state dir to a throwaway tmp location so
+    daemon-lifecycle tests never touch the maintainer's real LaunchAgent."""
+    plist_path = tmp_path / "com.rjmorales.6ix9ine.daemon.plist"
+    monkeypatch.setattr(shared, "DAEMON_PLIST_PATH", plist_path)
+    monkeypatch.setenv("SIXNINE_STATE_DIR", str(tmp_path / "state"))
+    return plist_path
+
+
+def _reachable_send_request(*_a, **_k):
+    return {"ok": True}
+
+
+def _unreachable_send_request(*_a, **_k):
+    raise ConnectionError("no daemon")
+
+
+def test_cmd_daemon_start_invokes_launchctl_load(isolated_daemon_plist):
     calls = []
 
     def fake_run(cmd, **kwargs):
         calls.append(cmd)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    _, exit_code = cli.cmd_daemon_start(run=fake_run)
-    assert calls[0][:2] == ["launchctl", "load"]
+    response, exit_code = cli.cmd_daemon_start(
+        run=fake_run, send_request=_reachable_send_request, sleep=lambda _d: None
+    )
+    assert ["launchctl", "load"] in [c[:2] for c in calls]
+    assert response["ok"] is True
     assert exit_code == shared.EXIT_OK
 
 
-def test_cmd_daemon_stop_invokes_launchctl_unload():
+def test_cmd_daemon_start_writes_plist_when_absent(isolated_daemon_plist):
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    assert not isolated_daemon_plist.exists()
+    response, _ = cli.cmd_daemon_start(
+        run=fake_run, send_request=_reachable_send_request, sleep=lambda _d: None
+    )
+    assert isolated_daemon_plist.exists()
+    assert shared.DAEMON_BUNDLE_ID in isolated_daemon_plist.read_text()
+    assert response["regenerated_plist"] is True
+
+
+def test_cmd_daemon_start_regenerates_stale_plist_and_unloads_first(isolated_daemon_plist):
+    # Simulate a stale plist from a previous install pointing at a dead path.
+    isolated_daemon_plist.write_text("<plist>STALE /Cellar/6ix9ine/1.0.0/bin</plist>")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd[:2])
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    response, exit_code = cli.cmd_daemon_start(
+        run=fake_run, send_request=_reachable_send_request, sleep=lambda _d: None
+    )
+    # Must unload the stale registration BEFORE loading the corrected one.
+    assert calls == [["launchctl", "unload"], ["launchctl", "load"]]
+    # Plist was rewritten to the freshly computed content.
+    assert "STALE" not in isolated_daemon_plist.read_text()
+    assert response["regenerated_plist"] is True
+    assert exit_code == shared.EXIT_OK
+
+
+def test_cmd_daemon_start_no_churn_when_plist_current(isolated_daemon_plist):
+    # First start writes the correct plist.
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    cli.cmd_daemon_start(run=fake_run, send_request=_reachable_send_request, sleep=lambda _d: None)
+
+    # Second start with an unchanged environment must NOT unload/rewrite.
+    calls = []
+
+    def tracking_run(cmd, **kwargs):
+        calls.append(cmd[:2])
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    response, _ = cli.cmd_daemon_start(
+        run=tracking_run, send_request=_reachable_send_request, sleep=lambda _d: None
+    )
+    assert calls == [["launchctl", "load"]]  # no unload
+    assert response["regenerated_plist"] is False
+
+
+def test_cmd_daemon_start_reports_failure_when_never_reachable(isolated_daemon_plist):
+    # launchctl exits 0 (the exact false-success case) but the daemon never
+    # opens its socket -> must report ok:false, not trust the exit code.
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(
+            returncode=0, stdout="", stderr="Load failed: 5: Input/output error"
+        )
+
+    response, exit_code = cli.cmd_daemon_start(
+        run=fake_run, send_request=_unreachable_send_request, sleep=lambda _d: None
+    )
+    assert response["ok"] is False
+    assert "did not become reachable" in response["error"]
+    assert "Input/output error" in response["error"]
+    assert exit_code == shared.EXIT_GENERAL_ERROR
+
+
+def test_cmd_daemon_stop_invokes_launchctl_unload(isolated_daemon_plist):
     calls = []
 
     def fake_run(cmd, **kwargs):
         calls.append(cmd)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    cli.cmd_daemon_stop(run=fake_run)
+    response, exit_code = cli.cmd_daemon_stop(
+        run=fake_run, send_request=_unreachable_send_request, sleep=lambda _d: None
+    )
     assert calls[0][:2] == ["launchctl", "unload"]
+    assert response["ok"] is True
+    assert exit_code == shared.EXIT_OK
+
+
+def test_cmd_daemon_stop_reports_failure_when_still_reachable(isolated_daemon_plist):
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    # Daemon keeps answering its socket -> unload did not really stop it.
+    response, exit_code = cli.cmd_daemon_stop(
+        run=fake_run, send_request=_reachable_send_request, sleep=lambda _d: None
+    )
+    assert response["ok"] is False
+    assert "still reachable" in response["error"]
+    assert exit_code == shared.EXIT_GENERAL_ERROR
 
 
 def test_cmd_daemon_status_reports_not_running_on_connection_error():

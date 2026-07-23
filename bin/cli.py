@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -301,38 +302,36 @@ def cmd_uninstall_hooks(args, agent_modules: Optional[dict] = None) -> tuple[dic
 # --- daemon lifecycle (LaunchAgent, runs as the current user) ---
 
 
-def cmd_daemon_start(run: Deps = None) -> tuple[dict, int]:
-    run = run or subprocess.run
-    
-    # Generate LaunchAgent plist if it doesn't exist
-    if not shared.DAEMON_PLIST_PATH.exists():
-        if getattr(sys, "frozen", False):
-            # Running as a compiled binary
-            cli_dir = Path(sys.executable).parent
-            daemon_bin = cli_dir / "com.rjmorales.6ix9ine.daemon"
-            if not daemon_bin.exists():
-                import shutil
-                daemon_path_str = shutil.which("com.rjmorales.6ix9ine.daemon")
-                if daemon_path_str:
-                    daemon_bin = Path(daemon_path_str)
-                else:
-                    daemon_bin = Path("/usr/local/bin/com.rjmorales.6ix9ine.daemon")
-            program_arguments = [str(daemon_bin)]
-            working_dir = str(shared.state_dir())
-        else:
-            # Running as Python script
-            python_exe = sys.executable
-            cli_dir = Path(__file__).resolve().parent
-            daemon_py = cli_dir / "daemon.py"
-            program_arguments = [python_exe, str(daemon_py)]
-            working_dir = str(cli_dir)
+def _daemon_launch_config() -> tuple[list[str], str]:
+    """Compute the daemon's ProgramArguments + WorkingDirectory from where THIS
+    binary is actually running right now. Recomputed on every start so a moved
+    install (e.g. after `brew upgrade` relocates the versioned Cellar path) is
+    reflected instead of trusting a plist written by a prior version."""
+    if getattr(sys, "frozen", False):
+        # Running as a compiled binary
+        cli_dir = Path(sys.executable).parent
+        daemon_bin = cli_dir / "com.rjmorales.6ix9ine.daemon"
+        if not daemon_bin.exists():
+            import shutil
 
-        shared.state_dir().mkdir(parents=True, exist_ok=True)
-        log_out = str(shared.state_dir() / "daemon.log")
-        log_err = str(shared.state_dir() / "daemon.err.log")
+            daemon_path_str = shutil.which("com.rjmorales.6ix9ine.daemon")
+            if daemon_path_str:
+                daemon_bin = Path(daemon_path_str)
+            else:
+                daemon_bin = Path("/usr/local/bin/com.rjmorales.6ix9ine.daemon")
+        return [str(daemon_bin)], str(shared.state_dir())
 
-        args_str = "\n".join(f"\t\t<string>{arg}</string>" for arg in program_arguments)
-        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+    # Running as a Python script
+    cli_dir = Path(__file__).resolve().parent
+    daemon_py = cli_dir / "daemon.py"
+    return [sys.executable, str(daemon_py)], str(cli_dir)
+
+
+def _render_daemon_plist(program_arguments: list[str], working_dir: str) -> str:
+    log_out = str(shared.state_dir() / "daemon.log")
+    log_err = str(shared.state_dir() / "daemon.err.log")
+    args_str = "\n".join(f"\t\t<string>{arg}</string>" for arg in program_arguments)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -357,25 +356,138 @@ def cmd_daemon_start(run: Deps = None) -> tuple[dict, int]:
 </dict>
 </plist>
 """
-        shared.DAEMON_PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-        shared.DAEMON_PLIST_PATH.write_text(plist_content)
-
-    result = run(["launchctl", "load", str(shared.DAEMON_PLIST_PATH)], capture_output=True, text=True, check=False)
-    ok = result.returncode == 0
-    return {"ok": ok, "output": result.stdout or result.stderr}, (shared.EXIT_OK if ok else shared.EXIT_GENERAL_ERROR)
 
 
-def cmd_daemon_stop(run: Deps = None) -> tuple[dict, int]:
+def _read_plist_text() -> Optional[str]:
+    try:
+        return shared.DAEMON_PLIST_PATH.read_text()
+    except OSError:
+        return None
+
+
+def _daemon_reachable(send_request: Callable) -> bool:
+    """True iff the daemon answers STATUS on its socket — the real, direct
+    signal, as opposed to guessing from launchctl's exit code."""
+    try:
+        send_request(shared.socket_path(), {"cmd": "STATUS"})
+        return True
+    except ConnectionError:
+        return False
+    except Exception:
+        # A malformed/partial response still proves the socket is up.
+        return True
+
+
+def _poll_daemon(
+    send_request: Callable, sleep: Callable, want_reachable: bool, attempts: int, delay: float
+) -> bool:
+    """Poll until the daemon reaches the desired reachability, or give up.
+    Returns True if the desired state was observed within the budget."""
+    for _ in range(max(1, attempts)):
+        if _daemon_reachable(send_request) == want_reachable:
+            return True
+        sleep(delay)
+    return False
+
+
+def cmd_daemon_start(run: Deps = None, send_request: Deps = None, sleep: Deps = None) -> tuple[dict, int]:
     run = run or subprocess.run
-    result = run(["launchctl", "unload", str(shared.DAEMON_PLIST_PATH)], capture_output=True, text=True, check=False)
-    ok = result.returncode == 0
-    return {"ok": ok, "output": result.stdout or result.stderr}, (shared.EXIT_OK if ok else shared.EXIT_GENERAL_ERROR)
+    send_request = send_request or ipc.send_request
+    sleep = sleep or time.sleep
+
+    program_arguments, working_dir = _daemon_launch_config()
+    expected_plist = _render_daemon_plist(program_arguments, working_dir)
+    current_plist = _read_plist_text()
+
+    shared.state_dir().mkdir(parents=True, exist_ok=True)
+    shared.DAEMON_PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    # Staleness fix: (re)generate the plist whenever what's on disk differs from
+    # what THIS binary expects — not only when the file is entirely absent. A
+    # plist written by a previous install hardcodes a version-specific Cellar
+    # path that no longer exists after `brew upgrade`.
+    stale = current_plist != expected_plist
+    if stale:
+        # Overwriting the file alone does NOT make launchd pick up the change:
+        # if the label is still registered, a subsequent `load` exits 0 while
+        # doing nothing (empirically confirmed). Unload the old registration
+        # first (harmless no-op if it was never loaded), then write + load.
+        if current_plist is not None:
+            run(
+                ["launchctl", "unload", str(shared.DAEMON_PLIST_PATH)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        shared.DAEMON_PLIST_PATH.write_text(expected_plist)
+
+    load_result = run(
+        ["launchctl", "load", str(shared.DAEMON_PLIST_PATH)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    # Success reporting fix: trust the daemon's actual socket, not launchctl's
+    # exit code. `launchctl load` is known to exit 0 while the daemon never
+    # comes up, so confirm reachability before claiming ok.
+    reachable = _poll_daemon(
+        send_request,
+        sleep,
+        want_reachable=True,
+        attempts=shared.DAEMON_START_POLL_ATTEMPTS,
+        delay=shared.DAEMON_START_POLL_DELAY,
+    )
+
+    if reachable:
+        return {"ok": True, "regenerated_plist": stale}, shared.EXIT_OK
+
+    launchctl_output = (load_result.stdout or load_result.stderr or "").strip()
+    error = "daemon did not become reachable after launchctl load"
+    if launchctl_output:
+        error = f"{error}; launchctl said: {launchctl_output}"
+    return (
+        {"ok": False, "error": error, "regenerated_plist": stale},
+        shared.EXIT_GENERAL_ERROR,
+    )
 
 
-def cmd_daemon_restart(run: Deps = None) -> tuple[dict, int]:
+def cmd_daemon_stop(run: Deps = None, send_request: Deps = None, sleep: Deps = None) -> tuple[dict, int]:
     run = run or subprocess.run
-    cmd_daemon_stop(run=run)
-    return cmd_daemon_start(run=run)
+    send_request = send_request or ipc.send_request
+    sleep = sleep or time.sleep
+
+    result = run(
+        ["launchctl", "unload", str(shared.DAEMON_PLIST_PATH)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    # As with start, don't trust the unload exit code alone: confirm the daemon
+    # is genuinely gone from its socket before reporting success.
+    stopped = _poll_daemon(
+        send_request,
+        sleep,
+        want_reachable=False,
+        attempts=shared.DAEMON_STOP_POLL_ATTEMPTS,
+        delay=shared.DAEMON_STOP_POLL_DELAY,
+    )
+
+    if stopped:
+        return {"ok": True}, shared.EXIT_OK
+
+    launchctl_output = (result.stdout or result.stderr or "").strip()
+    error = "daemon still reachable after launchctl unload"
+    if launchctl_output:
+        error = f"{error}; launchctl said: {launchctl_output}"
+    return {"ok": False, "error": error}, shared.EXIT_GENERAL_ERROR
+
+
+def cmd_daemon_restart(run: Deps = None, send_request: Deps = None, sleep: Deps = None) -> tuple[dict, int]:
+    run = run or subprocess.run
+    cmd_daemon_stop(run=run, send_request=send_request, sleep=sleep)
+    return cmd_daemon_start(run=run, send_request=send_request, sleep=sleep)
 
 
 def cmd_daemon_status(send_request: Deps = None) -> tuple[dict, int]:
