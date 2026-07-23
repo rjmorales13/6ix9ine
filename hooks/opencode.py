@@ -17,12 +17,21 @@ PROJECT_CONFIG_DIR = Path.cwd() / ".opencode"
 HOME_CONFIG_DIR = Path.home() / ".config" / "opencode"
 PLUGIN_FILENAME = "6ix9ine-hook.ts"
 
-# Absolute path to the installed CLI wrapper (see install.sh) -- deterministic
-# per-$HOME, same approach used for the Claude Code hook fix.
-_CLI_PATH = str(Path.home() / ".local" / "bin" / "6ix9ine")
+# Bare command name, NOT an absolute install-time path. Unlike Claude Code's
+# hooks.json (whose "command" field is invoked directly, so hooks/claude.py's
+# _cli_path() must precompute an absolute path via shutil.which/frozen-binary
+# fallback), this template is executed by opencode's own execFileSync, which
+# spawns through the child process's inherited PATH. Baking in an absolute
+# path here (as an earlier version of this file did, hardcoded to the
+# source-install location ~/.local/bin/6ix9ine) goes stale the moment the user
+# switches install methods (e.g. source install -> Homebrew) without rerunning
+# install() -- exactly the bug this fixes. A bare name self-heals across
+# install-method changes since it re-resolves against PATH on every opencode
+# turn instead of once at install time.
+_CLI_PATH = "6ix9ine"
 
 PLUGIN_TEMPLATE = (
-    'import { execSync } from "node:child_process"\n'
+    'import { execFileSync } from "node:child_process"\n'
     "\n"
     f"const CLI = {_CLI_PATH!r}\n"
     "\n"
@@ -30,7 +39,7 @@ PLUGIN_TEMPLATE = (
     "  return {\n"
     '    "chat.message": async (input) => {\n'
     "      try {\n"
-    '        execSync(`${CLI} acquire ${input.sessionID} --tool opencode --reason "opencode turn"`, { timeout: 3000 })\n'
+    '        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn"], { timeout: 3000, stdio: "ignore" })\n'
     "      } catch (err) {\n"
     "        // 6ix9ine failing must never break an OpenCode turn\n"
     "      }\n"
@@ -40,7 +49,7 @@ PLUGIN_TEMPLATE = (
     "      const sessionID = input.event.properties?.sessionID\n"
     "      if (!sessionID) return\n"
     "      try {\n"
-    "        execSync(`${CLI} release ${sessionID}`, { timeout: 3000 })\n"
+    '        execFileSync(CLI, ["release", sessionID], { timeout: 3000, stdio: "ignore" })\n'
     "      } catch (err) {\n"
     "        // 6ix9ine failing must never break an OpenCode turn\n"
     "      }\n"
