@@ -60,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     acquire.add_argument("session_key")
     acquire.add_argument("--tool", required=True, choices=sorted(shared.VALID_AGENTS))
     acquire.add_argument("--reason", default=None)
+    # Optional pid of the caller's long-lived host process (e.g. OpenCode's
+    # chat.message handler passing its own process.pid). The daemon resolves
+    # create_time server-side from this pid to guard against OS PID reuse --
+    # see daemon_commands.handle_acquire. Omit for callers like Claude's
+    # hook-acquire, which never track a session-level pid at all.
+    acquire.add_argument("--pid", type=int, default=None)
 
     release = subparsers.add_parser("release")
     release.add_argument("session_key", nargs="?", default=None)
@@ -111,6 +117,9 @@ def build_parser() -> argparse.ArgumentParser:
 def cmd_acquire(args, send_request: Deps = None) -> tuple[dict, int]:
     send_request = send_request or ipc.send_request
     payload = {"cmd": "ACQUIRE", "session": args.session_key, "tool": args.tool, "reason": args.reason or ""}
+    pid = getattr(args, "pid", None)
+    if pid is not None:
+        payload["pid"] = pid
     try:
         response = send_request(shared.socket_path(), payload)
     except ConnectionError as exc:

@@ -101,6 +101,16 @@ def idle_timeout_minutes() -> int:
     return int(os.environ.get("SIXNINE_IDLE_TIMEOUT", "5"))
 
 
+def session_max_age_hours() -> float:
+    # Hard defense-in-depth backstop (see daemon.py's tick()): any session
+    # older than this, regardless of pid/create_time state, is force-released.
+    # Generous by design -- acquire() refreshes `timestamp` on every
+    # re-acquire, so an actively-worked-on session never approaches this;
+    # only a genuinely abandoned one (e.g. a crashed agent whose pid got
+    # reused, evading the create_time guard) does.
+    return float(os.environ.get("SIXNINE_SESSION_MAX_AGE_HOURS", "4"))
+
+
 def sniffing_enabled() -> bool:
     value = os.environ.get("SIXNINE_SNIFFING", "true").strip().lower()
     return value in ("true", "1", "yes", "on")

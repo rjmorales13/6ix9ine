@@ -22,6 +22,19 @@ def test_build_parser_acquire_reason_optional():
     assert args.reason is None
 
 
+def test_build_parser_acquire_pid_optional_and_defaults_to_none():
+    args = cli.build_parser().parse_args(["acquire", "abc-123", "--tool", "opencode"])
+    assert args.pid is None
+
+
+def test_build_parser_acquire_parses_pid():
+    args = cli.build_parser().parse_args(
+        ["acquire", "abc-123", "--tool", "opencode", "--pid", "4242"]
+    )
+    assert args.pid == 4242
+    assert isinstance(args.pid, int)
+
+
 def test_build_parser_parses_release():
     args = cli.build_parser().parse_args(["release", "abc-123"])
     assert args.command == "release"
@@ -89,6 +102,41 @@ def test_cmd_acquire_returns_daemon_not_running_on_connection_error():
 
     assert response["ok"] is False
     assert exit_code == shared.EXIT_DAEMON_NOT_RUNNING
+
+
+def test_cmd_acquire_includes_pid_in_payload_when_provided():
+    captured = {}
+
+    def fake_send_request(sock_path, payload, timeout=5.0):
+        captured["payload"] = payload
+        return {"ok": True, "status": "ACTIVE", "count": 1}
+
+    args = SimpleNamespace(session_key="abc-123", tool="opencode", reason="opencode turn", pid=4242)
+    cli.cmd_acquire(args, send_request=fake_send_request)
+
+    assert captured["payload"] == {
+        "cmd": "ACQUIRE",
+        "session": "abc-123",
+        "tool": "opencode",
+        "reason": "opencode turn",
+        "pid": 4242,
+    }
+
+
+def test_cmd_acquire_omits_pid_from_payload_when_not_provided():
+    """Callers built via argparse (pid default None) and hook-acquire's
+    manually-built Namespace (no pid attribute at all) must both omit the
+    key entirely, not send a null pid."""
+    captured = {}
+
+    def fake_send_request(sock_path, payload, timeout=5.0):
+        captured["payload"] = payload
+        return {"ok": True, "status": "ACTIVE", "count": 1}
+
+    args = SimpleNamespace(session_key="abc-123", tool="claude", reason=None, pid=None)
+    cli.cmd_acquire(args, send_request=fake_send_request)
+
+    assert "pid" not in captured["payload"]
 
 
 def test_cmd_release_sends_release_command():

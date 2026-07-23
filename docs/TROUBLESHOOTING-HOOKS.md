@@ -328,6 +328,83 @@ unfixed template.
 
 ---
 
+## Case study 5: OpenCode session leaked sleep-block forever if `session.idle` never fired
+
+### What was wrong
+
+`hooks/opencode.py`'s plugin calls `6ix9ine acquire <sessionID> --tool opencode` on `chat.message`
+(start of turn) and `6ix9ine release <sessionID>` only on the generic `event` hook filtered to
+`event.type === "session.idle"` (end of turn). `daemon_commands.handle_acquire` deliberately never
+attached a pid to these sessions (see Case study 1's era of that decision), and both
+`prune_dead`/`prune_idle` no-op on `session.pid is None`. If OpenCode ever failed to cleanly emit
+`session.idle` — a crash, a force-quit of the desktop app, `kill -9`, a connection drop, or a
+server restart mid-turn — the session was never automatically cleaned up, and macOS sleep stayed
+blocked forever until a manual `6ix9ine release --all` or a daemon restart. Proven live: acquired a
+synthetic session exactly as the real plugin does (no pid), watched it survive 20+ seconds across
+multiple daemon ticks completely untouched, then manually released it.
+
+### Why the obvious fix (just add `--pid`) was rejected
+
+An initial proposal — thread OpenCode's own `process.pid` through `acquire --pid` and feed it into
+the existing `prune_dead` — was independently reviewed and rejected for two reasons:
+
+1. **PID reuse hazard.** `prune_dead`'s liveness check was `psutil.pid_exists(pid)` with no
+   create_time guard, unlike `CommandPid`/`is_command_pid_alive` (daemon.py), which the codebase
+   already documents as "only treat a pid as alive if it exists AND its create_time matches."
+   Attaching a bare pid to `Session` without the same guard means: if the real OpenCode process
+   dies and the OS recycles its pid for an unrelated process before the next tick, the stale
+   session gets wrongly treated as still alive — non-deterministic, and doesn't reliably fix the
+   leak.
+2. **A second defect: silently enrolling in CPU-idle pruning.** The pid passed would be
+   `process.pid` from inside the plugin — the long-lived OpenCode server/plugin host, not the
+   one-shot CLI subprocess. That process is often near-0% CPU while genuinely waiting on the model
+   mid-turn. Left unguarded, `prune_idle`'s CPU-idle detector would put the Mac to sleep **during
+   active work** — worse than the original leak.
+
+### The fix
+
+- `Session` gained a `create_time` field (mirroring `CommandPid`'s existing `pid`/`create_time`
+  pair). `prune_dead` now branches three ways: no pid (unaffected), pid with no create_time
+  (today's exact unguarded behavior, preserved for Claude's process-sniffed sessions), and pid
+  **with** create_time (new guarded path: alive only if the pid exists AND its current create_time
+  matches within the same 1.0s tolerance `is_command_pid_alive` already used elsewhere).
+- `handle_acquire` accepts an optional `pid` and resolves `create_time` **server-side** via the
+  same `create_time_fn` `handle_track` already used — never trusting a client-sent create_time. If
+  the create_time can't be resolved (pid already gone, a race), it falls back to storing no pid at
+  all rather than a pid with no create_time, which would have silently reused the unguarded branch
+  meant for Claude's sniffed sessions and reintroduced the exact hazard above.
+- `prune_idle` now exempts any session with a `create_time` set (i.e. guarded acquire-with-pid
+  sessions) entirely — they have their own release signal (`session.idle`) and must never be
+  judged by CPU idleness.
+- Added a hard, configurable defense-in-depth backstop (`SIXNINE_SESSION_MAX_AGE_HOURS`, default
+  4h): any session older than the threshold is force-released in `tick()` regardless of pid state.
+  `acquire()` already refreshes `timestamp` on every re-acquire, so an actively-worked session
+  (repeated `chat.message` acquires) never approaches it — only a truly abandoned one does.
+- Session identity/refcounting is still purely by UUID `session-key`, unchanged — the pid is
+  cleanup plumbing, not identity.
+- `peer_pid` (the IPC caller's own credential) is still never adopted into ACQUIRE; the new `pid`
+  field comes only from the request body's explicit field the CLI sends.
+
+### How it was verified
+
+1. Unit tests covering all three `prune_dead` branches (including a PID-reuse scenario where
+   `pid_exists` is `True` but `create_time` no longer matches), the `prune_idle` exemption, the
+   max-age backstop (including that repeated re-acquire never ages out), the `--pid` CLI/daemon
+   plumbing, and that `peer_pid` is never adopted.
+2. The generated plugin template's `.ts` output was compiled with `bun build` — confirms it's
+   syntactically valid, not just that Python wrote *a* file.
+3. Verified `process.pid`'s semantics against the actually-installed `@opencode-ai/plugin`'s
+   `PluginInput` type (`dist/index.d.ts`) rather than assuming it — no evidence of a separate
+   worker/child process per call in the installed package.
+4. Live-tested against a real running daemon (an isolated instance, separate socket/state dir, so
+   as not to disturb the real production daemon this machine already had running): sent
+   `acquire --pid <a real, live pid>`, confirmed it appeared in `status`, killed that pid, and
+   confirmed the daemon's own `tick()` pruned it automatically on the very next cycle — the exact
+   behavior this fix exists to add. Confirmed the real production daemon's state was untouched
+   throughout.
+
+---
+
 ## Universal checklist for adding hook support for a new CLI
 
 Do **not** start from the `hooks/newagent.py` template in [CONTRIBUTING.md](CONTRIBUTING.md) as

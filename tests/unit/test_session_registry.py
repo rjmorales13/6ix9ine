@@ -286,3 +286,187 @@ def test_to_state_dict_command_pids_empty_by_default():
     state = registry.to_state_dict(now=1000.0)
 
     assert state["active_sessions"]["key-1"]["command_pids"] == []
+
+
+# -- prune_dead: pid-reuse-guarded acquire sessions (OpenCode --pid) -----
+
+
+def test_prune_dead_no_pid_is_not_eligible_for_pruning():
+    """A session with no pid at all (today's handle_acquire default) is
+    never touched by prune_dead, regardless of what is_alive says."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="claude", pid=None, now=1000.0)
+
+    removed = registry.prune_dead(is_alive=lambda pid: False, create_time_fn=lambda pid: None)
+
+    assert removed == []
+    assert registry.count() == 1
+
+
+def test_prune_dead_pid_without_create_time_uses_legacy_liveness_only():
+    """pid set but no create_time (Claude's process-sniffed sessions): alive
+    iff is_alive(pid), unaffected by create_time_fn -- unchanged behavior."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="claude", pid=111, now=1000.0)
+
+    removed = registry.prune_dead(is_alive=lambda pid: True, create_time_fn=lambda pid: None)
+    assert removed == []
+    assert registry.count() == 1
+
+    removed = registry.prune_dead(is_alive=lambda pid: False, create_time_fn=lambda pid: None)
+    assert removed == ["key-1"]
+    assert registry.count() == 0
+
+
+def test_prune_dead_guarded_session_survives_when_pid_and_create_time_match():
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_dead(is_alive=lambda pid: True, create_time_fn=lambda pid: 50.0)
+
+    assert removed == []
+    assert registry.count() == 1
+
+
+def test_prune_dead_guarded_session_removed_when_pid_reused_by_new_process():
+    """PID-reuse hazard: pid_exists is True (the OS handed the pid to an
+    unrelated process), but create_time no longer matches -- must be pruned."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_dead(is_alive=lambda pid: True, create_time_fn=lambda pid: 999.0)
+
+    assert removed == ["key-1"]
+    assert registry.count() == 0
+
+
+def test_prune_dead_guarded_session_within_tolerance_survives():
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_dead(is_alive=lambda pid: True, create_time_fn=lambda pid: 50.9)
+
+    assert removed == []
+    assert registry.count() == 1
+
+
+def test_prune_dead_guarded_session_removed_when_pid_no_longer_exists():
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_dead(is_alive=lambda pid: False, create_time_fn=lambda pid: 50.0)
+
+    assert removed == ["key-1"]
+    assert registry.count() == 0
+
+
+def test_prune_dead_guarded_session_removed_when_create_time_unresolvable():
+    """is_alive True but create_time_fn can't resolve current create_time
+    (process just exited) -- treat as dead, mirroring is_command_pid_alive."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_dead(is_alive=lambda pid: True, create_time_fn=lambda pid: None)
+
+    assert removed == ["key-1"]
+    assert registry.count() == 0
+
+
+def test_prune_dead_guarded_session_without_create_time_fn_treated_as_dead():
+    """If no create_time_fn is supplied at all for a guarded session, we
+    can't verify identity, so fail toward pruning rather than trusting it."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_dead(is_alive=lambda pid: True)
+
+    assert removed == ["key-1"]
+    assert registry.count() == 0
+
+
+# -- prune_idle: guarded acquire sessions are exempt from CPU-idle pruning --
+
+
+def test_prune_idle_exempts_sessions_with_create_time():
+    """A guarded acquire session (pid + create_time) must never be pruned for
+    CPU idleness -- it has its own release signal (session.idle)."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    calls = []
+
+    def is_idle(pid):
+        calls.append(pid)
+        return True  # even if "idle", must not be pruned
+
+    removed = registry.prune_idle(is_idle)
+
+    assert removed == []
+    assert registry.count() == 1
+    # is_idle must never even be called for a guarded session -- the `and`
+    # short-circuits before touching the CPU-percent sampler.
+    assert calls == []
+
+
+def test_prune_idle_still_applies_to_pid_only_sessions():
+    """Claude's process-sniffed sessions (pid, no create_time) are unaffected
+    -- they remain the only consumer of CPU-idle pruning."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="claude", pid=111, now=1000.0)
+
+    removed = registry.prune_idle(is_idle=lambda pid: True)
+
+    assert removed == ["key-1"]
+    assert registry.count() == 0
+
+
+# -- prune_max_age: hard defense-in-depth backstop -----------------------
+
+
+def test_prune_max_age_removes_sessions_older_than_threshold():
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_max_age(max_age_seconds=3600.0, now=1000.0 + 3601.0)
+
+    assert removed == ["key-1"]
+    assert registry.count() == 0
+
+
+def test_prune_max_age_keeps_sessions_within_threshold():
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_max_age(max_age_seconds=3600.0, now=1000.0 + 3599.0)
+
+    assert removed == []
+    assert registry.count() == 1
+
+
+def test_prune_max_age_ignores_pid_state_entirely():
+    """The hard backstop force-releases regardless of pid/create_time -- it's
+    a last resort, not another liveness check."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="claude", pid=None, now=1000.0)
+    registry.acquire("key-2", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+
+    removed = registry.prune_max_age(max_age_seconds=100.0, now=1000.0 + 200.0)
+
+    assert set(removed) == {"key-1", "key-2"}
+    assert registry.count() == 0
+
+
+def test_reacquire_refreshes_timestamp_so_active_sessions_never_age_out():
+    """acquire() on an existing key replaces `timestamp` with the fresh
+    `now` -- an actively-used session (repeated chat.message acquires) never
+    approaches the max-age backstop."""
+    registry = SessionRegistry()
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0)
+    registry.acquire("key-1", agent="opencode", pid=222, create_time=50.0, now=1000.0 + 3600.0)
+
+    assert registry.sessions()["key-1"].timestamp == 1000.0 + 3600.0
+
+    removed = registry.prune_max_age(max_age_seconds=100.0, now=1000.0 + 3650.0)
+
+    assert removed == []
+    assert registry.count() == 1
