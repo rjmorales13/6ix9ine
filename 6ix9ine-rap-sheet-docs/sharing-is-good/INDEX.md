@@ -18,6 +18,7 @@ This folder contains complete multi-agent work orders, strategy analysis, and ex
 
 | File | Purpose | Key Info |
 |------|---------|----------|
+| **LAUNCH-CHECKLIST.md** | Verified done/pending checklist with CLI vs MANUAL steps | Single source of truth for launch status — supersedes readiness claims in other docs |
 | **SESSION-COMPLETION.md** | Full session recap + final metrics | All 5 PRs merged (332 tests passing), launch-ready, git history corrected |
 | **COMPLETION-STATUS.md** | Release phase-by-phase breakdown | v0.1-marketing ✅, v0.2-claude-plugin ✅, v0.3-mcp-server ✅, v0.5-homebrew ✅, v0.4-thermal ✅ |
 
