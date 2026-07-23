@@ -21,7 +21,7 @@
 ### FABLE (Marketing)
 **Work Order:** FableWO-001  
 **Tasks:** Blog post (comparison), blog post (architecture), social media pack  
-**Output:** 3 markdown files (blog-posts/, social-media/)  
+**Output:** 3 markdown files (blog-posts/, docs/marketing/social/)  
 **PR Title:** `docs(fable): Add marketing content pack + comparison + architecture posts`  
 **Branch:** `docs/fable-marketing-content`  
 
@@ -88,7 +88,7 @@
 ```
 Platform: Claude.ai, Claude Code (Fable model)
 Prompt: Copy TEMPLATE 1 from AGENT-COPY-PASTE-TEMPLATES.md
-Expected Output: 3 markdown files in blog-posts/ and social-media/
+Expected Output: 3 markdown files in blog-posts/ and docs/marketing/social/
 Time: ~4-5 hours
 ```
 

@@ -24,7 +24,7 @@ Sessions are reference-counted by UUID. Overlapping tasks stack cleanly; sleep u
 
 **Status:** Fully supported. Hook system confirmed and verified live (real hook invocation
 simulated with synthetic stdin JSON, real `settings.json` merge, real acquire/release cycle) —
-see `6ix9ine-rap-sheet-docs/handoff-road-to-gummo.md` bug #5 for how the earlier, broken
+see `docs/planning/handoff-road-to-gummo.md` bug #5 for how the earlier, broken
 implementation was found and fixed.
 
 ### Hook System

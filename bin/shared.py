@@ -18,7 +18,7 @@ HELPER_INSTALL_PATH = Path("/Library/PrivilegedHelperTools") / HELPER_BUNDLE_ID
 HELPER_PLIST_PATH = Path("/Library/LaunchDaemons") / f"{HELPER_BUNDLE_ID}.plist"
 DAEMON_PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{DAEMON_BUNDLE_ID}.plist"
 
-# Exit codes, per 6ix9ine-rap-sheet-docs/API.md
+# Exit codes, per docs/API.md
 EXIT_OK = 0
 EXIT_GENERAL_ERROR = 1
 EXIT_INVALID_ARGS = 2

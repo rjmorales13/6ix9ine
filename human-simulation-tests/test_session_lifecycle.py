@@ -30,7 +30,7 @@ def test_acquire_release_roundtrip(run_cli, sleep_disabled):
 
 
 def test_multi_session_refcounting_keeps_sleep_blocked_until_last_release(run_cli, sleep_disabled):
-    # Regression test for bug #6 (6ix9ine-rap-sheet-docs/handoff-road-to-gummo.md): sessions used
+    # Regression test for bug #6 (docs/planning/handoff-road-to-gummo.md): sessions used
     # to be auto-pruned within ~5 seconds regardless of real activity, because the daemon tracked
     # the wrong PID for liveness. This proves the fix on the real, running daemon: releasing one
     # of two held sessions must NOT drop the other one, and sleep must stay blocked while it does.

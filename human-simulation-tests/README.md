@@ -33,7 +33,7 @@ environment that has no real daemon or helper to talk to.
 ## What's expected to happen right now (as of 2026-07-04)
 
 - `test_session_lifecycle.py` — **should all PASS**. Verifies the real fix for bug #6
-  (see `6ix9ine-rap-sheet-docs/handoff-road-to-gummo.md`): acquire/release round-trips,
+  (see `docs/planning/handoff-road-to-gummo.md`): acquire/release round-trips,
   multi-session refcounting (releasing one session while another is still held must keep sleep
   blocked), and hold-duration expiry — all checked against the real daemon and real `pmset -g`
   output.

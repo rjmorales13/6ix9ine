@@ -63,7 +63,7 @@ if command -v "$SIXNINE_BIN" &>/dev/null; then
 else
     warn "6ix9ine command not found — skipping hooks/daemon/helper teardown."
     warn "If a daemon or privileged helper is still running from a prior install,"
-    warn "remove them manually (see 6ix9ine-rap-sheet-docs/INSTALL.md)."
+    warn "remove them manually (see docs/INSTALL.md)."
 fi
 
 # Ask brew directly about this one formula rather than grepping the full

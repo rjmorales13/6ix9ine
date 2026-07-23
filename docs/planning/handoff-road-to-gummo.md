@@ -119,7 +119,7 @@ not real hardware or real filesystem state, *except* where superseded by the liv
 - [x] `hooks/opencode.py` — same pattern, fake `.opencode` dir only
 - [x] `hooks/codex.py`, `hooks/antigravity.py` — confirmed to correctly no-op with a clear
       "pending research" error (this is the intended behavior, not a bug)
-- [x] `LICENSE` (MIT), `README.md`, and full doc set in `6ix9ine-rap-sheet-docs/`
+- [x] `LICENSE` (MIT), `README.md`, and full doc set in `docs/`
       (`ARCHITECTURE.md`, `INSTALL.md`, `API.md`, `HOOKS.md`, `CONTRIBUTING.md`)
 
 ---

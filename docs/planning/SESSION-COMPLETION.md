@@ -365,7 +365,7 @@ Work orders created by complexity:
 
 All documentation, task files, and reference materials are located at:
 ```
-/Users/rmorales/PycharmProjects/6ix9ine/6ix9ine-rap-sheet-docs/sharing-is-good/
+/Users/rmorales/PycharmProjects/6ix9ine/docs/planning/
 ```
 
 **Key files for reference:**

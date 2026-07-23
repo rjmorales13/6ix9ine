@@ -69,7 +69,7 @@ Note: local branch `feat/opus-integration-tests` has an unmerged 338-line `integ
 
 **Confidence has improved materially since this was last written, but read the full pattern before deciding.** `v1.0.2` is now confirmed working end-to-end on a real machine, through a real `brew install` → `brew upgrade` cycle, with all three rounds of bugs fixed and independently reviewed. That said, this was genuinely three rounds — a new real bug surfaced at each release (`v1.0.0`→`v1.0.1`→`v1.0.2`), each one only found because of live-machine testing rather than trusting reported success. That's a real signal about how much surface area this project still has, not just bad luck. Whether that's enough runway to promote is a judgment call for the maintainer, not something to infer from "the CI is green now."
 
-All content exists as markdown only: `blog-posts/` (2 posts + outline), `social-media/twitter-threads.md` (Twitter thread, 3 Reddit templates, PH tagline, IH pitch).
+All content exists as markdown only: `blog-posts/` (2 posts + outline), `docs/marketing/social/twitter-threads.md` (Twitter thread, 3 Reddit templates, PH tagline, IH pitch).
 
 ### Blog posts
 - ⬜ **[CLI]** dev.to — has a publish API (`api-key` + POST); Claude can publish once you create an account and API key **[MANUAL: account]**
@@ -87,7 +87,7 @@ All content exists as markdown only: `blog-posts/` (2 posts + outline), `social-
 
 **Bottom line: platform launch posting is yours to do by hand.** Account creation involves identity/phone verification Claude cannot and should not do.
 
-> Content: [../../social-media/twitter-threads.md](../../social-media/twitter-threads.md), [../../blog-posts/](../../blog-posts/)
+> Content: [../marketing/social/twitter-threads.md](../marketing/social/twitter-threads.md), [../marketing/blog/](../marketing/blog/)
 > Sequencing detail: [step-1-promotion-distribution-strategy.md](step-1-promotion-distribution-strategy.md)
 
 ---
