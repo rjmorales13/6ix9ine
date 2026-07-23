@@ -143,13 +143,35 @@ Most sleep tools are either too broad or too invisible. 6ix9ine exists to keep t
 
 ## 🚀 Getting Started
 
-### One command. Then it's alive.
+### 🍺 Homebrew (recommended)
+
+```bash
+brew install rjmorales13/6ix9ine/6ix9ine
+```
+
+Real Homebrew, real binaries — `brew upgrade` and `brew uninstall` just work like any other formula. This auto-taps `rjmorales13/homebrew-6ix9ine` and installs in one shot.
+
+> Distributed via our own tap, not the official [formulae.brew.sh](https://formulae.brew.sh) index (`homebrew-core`). That's a genuine, first-class Homebrew install either way — it's just not yet *searchable* on brew.sh. Submitting to `homebrew-core` is a goal for once 6ix9ine has wider adoption, not a blocker to installing today.
+
+Homebrew can't run privileged setup steps for you automatically, so finish setup with:
+
+```bash
+6ix9ine setup-privileged-helper   # installs the root LaunchDaemon (prompts for sudo)
+6ix9ine install-hooks --all       # wires up agent lifecycle hooks
+6ix9ine daemon-start              # starts the background daemon
+```
+
+Then open the dashboard any time with `t69`.
+
+### 🛠️ From source
+
+Prefer building it yourself, or want the fully automated one-shot install (privileged helper, hooks, and daemon all set up for you, dashboard opens automatically)?
 
 ```bash
 git clone https://github.com/rjmorales13/6ix9ine.git && cd 6ix9ine && ./install.sh
 ```
 
-That's it. Here's what you'll see race by:
+Here's what you'll see race by:
 
 ```
   ⚙  Finding Python 3.13+
@@ -198,23 +220,27 @@ t69
 
 **That's the whole loop.** Install once. Close and reopen as you please. Never think about it again.
 
-### 🍺 Homebrew (coming soon)
-
-```bash
-brew tap rjmorales13/6ix9ine && brew install 6ix9ine
-```
-
-Same one-shot experience, with automatic updates. Until then, `./install.sh` is the exact same setup.
-
 ### 🛠️ Manual commands (for reference)
 
-`./install.sh` handles all of this automatically. You only need these if you're doing a custom setup:
+`./install.sh` handles all of this automatically; the Homebrew path above needs the three setup commands run once by hand. You only need the rest of these if you're doing a custom setup:
 
 - `6ix9ine setup-privileged-helper` — installs the root LaunchDaemon
 
 - `6ix9ine install-hooks --all` — sets up agent lifecycle hooks
 
 - `6ix9ine daemon-start` — starts the background daemon
+
+---
+
+## 🗑️ Uninstall
+
+Homebrew's `brew uninstall` only removes the CLI binaries — it has no idea the daemon, the privileged helper, or agent hooks exist, since those are set up separately after install, not by the formula itself. Removing just the binaries leaves all three running/installed and orphaned.
+
+```bash
+./scripts/uninstall.sh
+```
+
+This removes, in order: agent hooks, the background daemon, the privileged helper (prompts for `sudo`), the Homebrew formula and tap, and finally `~/Library/Application Support/6ix9ine` (logs, socket, local state). Pass `--keep-state` if you want to keep that last directory around.
 
 ---
 
