@@ -531,6 +531,15 @@ def build_setup_helper_script(project_root: Optional[Path], owner_uid: int) -> s
                 f'echo "{owner_uid}" > "{owner_file}"',
                 f'chown -R root:wheel "{shared.HELPER_INSTALL_PATH}" "{shared.HELPER_PLIST_PATH}" "{owner_file}"',
                 f'chmod 644 "{shared.HELPER_PLIST_PATH}"',
+                # Bootout the OLD registration FIRST. The on-disk binary was just
+                # refreshed by the cp above, but a stale KeepAlive=true helper
+                # process is still running the OLD code. `bootstrap`/`load` alone
+                # exit 0 while doing nothing when the label is already registered
+                # — the old root process would keep running old code forever.
+                # bootout kills it so the following bootstrap starts a fresh
+                # process from the new binary. Guarded (bootout returns nonzero
+                # when nothing is loaded) so `set -e` above doesn't abort.
+                f'launchctl bootout system "{shared.HELPER_PLIST_PATH}" 2>/dev/null || launchctl unload "{shared.HELPER_PLIST_PATH}" 2>/dev/null || true',
                 f'launchctl bootstrap system "{shared.HELPER_PLIST_PATH}" || launchctl load "{shared.HELPER_PLIST_PATH}"',
             ]
         )
@@ -565,26 +574,131 @@ def build_setup_helper_script(project_root: Optional[Path], owner_uid: int) -> s
             f'cp "{plist_src}" "{shared.HELPER_PLIST_PATH}"',
             f'chown -R root:wheel "{install_dir}" "{shared.HELPER_INSTALL_PATH}" "{shared.HELPER_PLIST_PATH}" "{owner_file}"',
             f'chmod 644 "{shared.HELPER_PLIST_PATH}"',
+            # Bootout the OLD registration FIRST (see the frozen branch above):
+            # a stale KeepAlive helper keeps running old code otherwise, and a
+            # bare `launchctl load` exits 0 while doing nothing when already
+            # loaded. Guarded so `set -e` doesn't abort when nothing is loaded.
+            f'launchctl bootout system "{shared.HELPER_PLIST_PATH}" 2>/dev/null || launchctl unload "{shared.HELPER_PLIST_PATH}" 2>/dev/null || true',
             f'launchctl load "{shared.HELPER_PLIST_PATH}"',
         ]
     )
 
 
-def cmd_setup_privileged_helper(run: Deps = None, project_root: Optional[Path] = None) -> tuple[dict, int]:
+def _helper_reported_version(send_request: Callable) -> Optional[str]:
+    """Return the version string the running helper reports for get_state, or
+    None if the socket is unreachable or the response carries no version."""
+    try:
+        response = send_request(shared.HELPER_SOCKET_PATH, {"method": "get_state"})
+    except ConnectionError:
+        return None
+    except Exception:
+        # A malformed/partial response proves the socket is up but tells us
+        # nothing trustworthy about the version -> treat as "not confirmed".
+        return None
+    if isinstance(response, dict):
+        version = response.get("version")
+        return version if isinstance(version, str) else None
+    return None
+
+
+def _poll_helper_version(
+    send_request: Callable, sleep: Callable, want_version: str, attempts: int, delay: float
+) -> bool:
+    """Poll until the helper answering get_state reports want_version.
+
+    This is the VERSION HANDSHAKE, deliberately stricter than bare reachability:
+    during a `brew upgrade` the stale OLD helper process is still alive and still
+    answering this exact socket path, so "something answered" is NOT proof the
+    upgrade took. Only the freshly-started process reports the CURRENT version."""
+    for _ in range(max(1, attempts)):
+        if _helper_reported_version(send_request) == want_version:
+            return True
+        sleep(delay)
+    return False
+
+
+def _helper_reachable(send_request: Callable) -> bool:
+    """True iff SOMETHING answers the helper socket. Used for teardown, where we
+    only care that the socket goes dark — not which version answered."""
+    try:
+        send_request(shared.HELPER_SOCKET_PATH, {"method": "get_state"})
+        return True
+    except ConnectionError:
+        return False
+    except Exception:
+        return True
+
+
+def _poll_helper_reachable(
+    send_request: Callable, sleep: Callable, want_reachable: bool, attempts: int, delay: float
+) -> bool:
+    """Poll until the helper socket reaches the desired reachability, or give up."""
+    for _ in range(max(1, attempts)):
+        if _helper_reachable(send_request) == want_reachable:
+            return True
+        sleep(delay)
+    return False
+
+
+def cmd_setup_privileged_helper(
+    run: Deps = None,
+    project_root: Optional[Path] = None,
+    send_request: Deps = None,
+    sleep: Deps = None,
+) -> tuple[dict, int]:
     run = run or subprocess.run
+    send_request = send_request or ipc.send_request
+    sleep = sleep or time.sleep
+
     script = build_setup_helper_script(project_root, owner_uid=os.getuid())
     result = run(["sudo", "bash", "-c", script], text=True, check=False)
-    ok = result.returncode == 0
-    return {"ok": ok}, (shared.EXIT_OK if ok else shared.EXIT_PERMISSION_DENIED)
+    if result.returncode != 0:
+        return {"ok": False, "error": "privileged setup script failed"}, shared.EXIT_PERMISSION_DENIED
+
+    # The script exiting 0 is NOT proof the running helper was refreshed. After a
+    # `brew upgrade` the on-disk binary is replaced, but a stale KeepAlive helper
+    # keeps running the OLD code and keeps answering the same socket. A bare
+    # reachability check would see "something answered" and rubber-stamp the very
+    # staleness bug this guards against. The script boots out the old process
+    # first; here we confirm the process now answering reports the CURRENT
+    # version — only a freshly-started helper matches shared.VERSION.
+    upgraded = _poll_helper_version(
+        send_request,
+        sleep,
+        want_version=shared.VERSION,
+        attempts=shared.HELPER_START_POLL_ATTEMPTS,
+        delay=shared.HELPER_START_POLL_DELAY,
+    )
+    if upgraded:
+        return {"ok": True, "helper_version": shared.VERSION}, shared.EXIT_OK
+
+    reported = _helper_reported_version(send_request)
+    if reported is None:
+        error = "helper did not become reachable at the current version after setup"
+    else:
+        error = (
+            f"helper still reporting version {reported!r}, expected {shared.VERSION!r} "
+            "— the stale process was not replaced"
+        )
+    return {"ok": False, "error": error}, shared.EXIT_GENERAL_ERROR
 
 
-def cmd_uninstall_helper(run: Deps = None) -> tuple[dict, int]:
+def cmd_uninstall_helper(run: Deps = None, send_request: Deps = None, sleep: Deps = None) -> tuple[dict, int]:
     run = run or subprocess.run
+    send_request = send_request or ipc.send_request
+    sleep = sleep or time.sleep
+
     install_dir = f"{shared.HELPER_INSTALL_PATH}.d"
     owner_file = shared.HELPER_INSTALL_PATH.parent / f"{shared.HELPER_BUNDLE_ID}.owner"
     script = "\n".join(
         [
-            f'launchctl unload "{shared.HELPER_PLIST_PATH}" || true',
+            # `set -e` so a genuine teardown failure propagates as a nonzero exit
+            # instead of being masked by the final command's status (previously
+            # `ok` reflected only `pmset`'s exit code, hiding earlier failures).
+            "set -e",
+            # bootout is guarded (|| true) because a not-currently-loaded helper
+            # makes it exit nonzero, which would otherwise trip `set -e`.
+            f'launchctl bootout system "{shared.HELPER_PLIST_PATH}" 2>/dev/null || launchctl unload "{shared.HELPER_PLIST_PATH}" 2>/dev/null || true',
             f'rm -f "{shared.HELPER_PLIST_PATH}"',
             f'rm -f "{shared.HELPER_INSTALL_PATH}"',
             f'rm -f "{owner_file}"',
@@ -593,8 +707,25 @@ def cmd_uninstall_helper(run: Deps = None) -> tuple[dict, int]:
         ]
     )
     result = run(["sudo", "bash", "-c", script], text=True, check=False)
-    ok = result.returncode == 0
-    return {"ok": ok}, (shared.EXIT_OK if ok else shared.EXIT_PERMISSION_DENIED)
+    if result.returncode != 0:
+        return {"ok": False, "error": "privileged uninstall script failed"}, shared.EXIT_PERMISSION_DENIED
+
+    # As with setup, don't trust the exit code alone: confirm the helper socket
+    # actually went dark, so a bootout that reported success but left the root
+    # process alive can't be mistaken for a clean teardown.
+    stopped = _poll_helper_reachable(
+        send_request,
+        sleep,
+        want_reachable=False,
+        attempts=shared.HELPER_STOP_POLL_ATTEMPTS,
+        delay=shared.HELPER_STOP_POLL_DELAY,
+    )
+    if stopped:
+        return {"ok": True}, shared.EXIT_OK
+    return (
+        {"ok": False, "error": "helper still reachable after uninstall"},
+        shared.EXIT_GENERAL_ERROR,
+    )
 
 
 def cmd_helper_status(send_request: Deps = None) -> tuple[dict, int]:
