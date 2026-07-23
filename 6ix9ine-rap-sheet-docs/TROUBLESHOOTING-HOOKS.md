@@ -171,6 +171,87 @@ interface has no `beforeCommand`/`afterCommand` at all.
 
 ---
 
+## Case study 3: Claude Code hook lockout (PR #13) — a *verified, working* integration that later became actively dangerous
+
+### What was wrong
+
+Case study 1's fix was real and correctly verified against source execution. It broke anyway, in
+production, for a reason source-level verification could never have caught. `hooks/claude.py`
+installed each hook as:
+
+```json
+{"type": "command", "command": "<sys.executable>", "args": ["-c", "<embedded python source>"]}
+```
+
+`sys.executable` is a real, general-purpose Python interpreter when running from source — `-c
+"<code>"` works fine. But 6ix9ine ships to real users as a **PyInstaller-frozen binary** via
+Homebrew, and in a frozen binary, `sys.executable` resolves to **the binary itself**, not an
+interpreter. The frozen binary's `main()` is a fixed `argparse` dispatcher, not a Python REPL — it
+rejected `-c` as an invalid subcommand and exited **2**. Claude Code treats exit 2 from
+`UserPromptSubmit` as blocking. **This locked the maintainer out of every single Claude Code
+prompt during real, live testing on their own machine**, requiring manual `~/.claude/settings.json`
+surgery to recover — not a hypothetical, not a test-environment artifact.
+
+### How it was found
+
+Not by code review. A separate, unrelated PR (#12, bundling the `hooks/` package into the frozen
+binary) was independently reviewed and approved with zero findings — because reviewing that diff
+alone could never reveal that a completely different, untouched code path (the hook installer)
+carried an assumption that's only false in a build mode the diff never exercised. It was found
+because the maintainer insisted on running `install-hooks --all` against the **real,
+Homebrew-distributed frozen binary**, rather than trusting that fixing one known bug (PR #12) made
+the feature safe to consider done.
+
+### The real problem
+
+- `sys.executable` is not a stable "something that can run arbitrary code" signal. It means two
+  different things depending on execution mode, and only one of those meanings actually supports
+  `-c <code>`.
+- No test in this project, before PR #13, ever built and executed the actual frozen binary's
+  installed hook. Every prior test exercised source-mode execution or mocked subprocess calls —
+  however thorough that suite looked, it structurally could not have caught this.
+
+### The fix
+
+- Stopped generating hooks as `<interpreter> -c <code>` entirely. Added real `hook-acquire`/
+  `hook-release` subcommands to the CLI's own `argparse` dispatch — this works identically frozen
+  or from source, because both modes go through the same dispatcher; neither depends on an
+  external general-purpose interpreter being reachable.
+- Hard-required the new subcommands to **always exit 0** (swallow every exception) and **print
+  nothing to stdout** for `UserPromptSubmit`/`Stop` — Claude Code injects a `UserPromptSubmit`
+  hook's stdout directly into the prompt context, so even a normal, successful JSON response would
+  have silently corrupted every prompt if printed.
+- Real users could already have the OLD broken hook baked into their `settings.json` (exactly what
+  happened to the maintainer) — so the fix also had to make the uninstall/self-heal matching logic
+  recognize **both** the old broken shape and the new one. A fix that only recognizes its own new
+  shape leaves anyone already affected permanently stuck, because a "successful" uninstall would
+  silently do nothing for them.
+- Removed the `PreToolUse`/Bash hook entirely rather than patching it in place — it turned out to
+  have never worked, even from source (a silently swallowed `NameError`), and its actual expected
+  Claude Code output contract was never verified against real docs. Shipping an unverified
+  reimplementation of something capable of blocking tool execution was judged worse than
+  temporarily losing the feature.
+
+### How it was verified
+
+1. Reproduced the exact crash first, against a freshly rebuilt frozen binary — confirmed
+   `<binary> -c "print(1)"` exits 2 with `argparse`'s "invalid choice" error, matching the real
+   incident precisely.
+2. Built the fixed binary fresh and, in an **isolated temp `HOME`** (never the real
+   `~/.claude/settings.json`), ran `install-hooks`, then actually executed the resulting installed
+   commands with a realistic JSON payload on stdin — confirmed exit 0, empty stdout, for both
+   `UserPromptSubmit` and `Stop`.
+3. Seeded an isolated settings file with the **exact old broken hook shape**, reproducing the
+   maintainer's real incident, confirmed it still reproduces exit 2 — then ran the **fixed**
+   binary's `install-hooks` against it and confirmed it replaced the broken hook with the safe
+   one, while leaving an unrelated, pre-existing setting in the same file untouched. This is the
+   test that proves the fix can *repair* an already-affected user, not just prevent new breakage.
+4. An independent reviewer, in a separate context with no access to the implementer's own
+   reasoning, re-verified the fix from the diff and separately re-confirmed the mechanism against
+   its own fresh build before approving.
+
+---
+
 ## Universal checklist for adding hook support for a new CLI
 
 Do **not** start from the `hooks/newagent.py` template in [CONTRIBUTING.md](CONTRIBUTING.md) as
@@ -200,6 +281,14 @@ the steps below.
 - **Can a hook block or break the host tool's normal operation if it errors or returns something
   unexpected?** (Claude Code: yes, exit code 2 blocks/erases.) Establish this before writing
   anything — it determines how defensively the generated code must be written.
+- **Does 6ix9ine ship as a compiled/frozen binary in production, even though it also runs from
+  source during development?** (Yes — PyInstaller, distributed via Homebrew.) If the hook's
+  invocation mechanism depends on `sys.executable` (or any equivalent "find me an interpreter"
+  signal) being a general-purpose interpreter, verify that holds in **both** modes before shipping
+  — it does not for a frozen binary, which is a fixed program, not an interpreter. See Case study 3.
+- **Does the host tool consume or inject the hook's stdout into its own context** (e.g. Claude
+  Code's `UserPromptSubmit`)? If so, the hook must produce **exactly** what's expected on
+  stdout — usually nothing — not whatever a normal, successful CLI response would print.
 
 ### 3. Write the installer so that
 
@@ -212,6 +301,14 @@ the steps below.
   blocking error to the host tool
 - Uninstall removes exactly what was added (match on content), not "restore the whole file from a
   backup that might now be stale from unrelated later edits"
+- Never hardcode one specific install method's binary path (e.g. a from-source install script's
+  target directory) as the only way to find the CLI. Resolve it dynamically — PATH lookup first,
+  with sensible fallbacks — so it keeps working under every install method, including ones that
+  didn't exist yet when the hook was first written
+- If a hook's installed shape ever changes between versions, the matching logic in `uninstall()`/
+  `install()` must recognize **both** the old and new shapes. A fix that only cleans up its own new
+  shape leaves anyone already on the old, broken shape permanently stuck — a "successful" uninstall
+  would silently do nothing for them. See Case study 3
 
 ### 4. Verify, in this order — do not skip to the end
 
@@ -226,6 +323,13 @@ the steps below.
    trusting silence as success.
 5. Confirm the actual effect you care about happens: check `6ix9ine status`, real `pmset -g`
    output — not just that the hook's own code ran without an exception.
+6. Test against the **actual distributed artifact real users run** — the frozen binary, not just
+   source execution. Some failure modes exist *only* in that mode (Case study 3); no amount of
+   source-level testing will surface them.
+7. **Never test hook installation against your own real, in-use config file**
+   (`~/.claude/settings.json` or equivalent) — always use an isolated temp `HOME`/config directory.
+   This is not a hypothetical precaution: a broken hook has already locked a real person out of
+   their own tool in this project's history (Case study 3).
 
 ### 5. Common test-methodology traps (both hit in this session)
 
