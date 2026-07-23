@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -367,3 +368,106 @@ def test_main_dispatches_to_acquire(monkeypatch, capsys):
     exit_code = cli.main(["acquire", "k1", "--tool", "claude"])
     assert exit_code == shared.EXIT_OK
     assert "ACTIVE" in capsys.readouterr().out
+
+
+# --- Claude Code hook entrypoints (hook-acquire / hook-release) ---
+
+
+def _feed_stdin(monkeypatch, text):
+    import io
+
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO(text))
+
+
+def test_build_parser_parses_hook_subcommands():
+    assert cli.build_parser().parse_args(["hook-acquire"]).command == "hook-acquire"
+    assert cli.build_parser().parse_args(["hook-release"]).command == "hook-release"
+
+
+def test_hook_acquire_sends_acquire_payload_from_stdin(monkeypatch):
+    captured = {}
+
+    def fake_send(sock, payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    _feed_stdin(monkeypatch, json.dumps({"session_id": "s1", "prompt": "build a thing"}))
+    args = SimpleNamespace(command="hook-acquire")
+    rc = cli.cmd_hook_acquire(args, send_request=fake_send)
+
+    assert rc == shared.EXIT_OK
+    assert captured["payload"]["cmd"] == "ACQUIRE"
+    assert captured["payload"]["session"] == "s1"
+    assert captured["payload"]["tool"] == "claude"
+    assert captured["payload"]["reason"] == "build a thing"
+
+
+def test_hook_release_sends_release_payload_from_stdin(monkeypatch):
+    captured = {}
+
+    def fake_send(sock, payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    _feed_stdin(monkeypatch, json.dumps({"session_id": "s2"}))
+    rc = cli.cmd_hook_release(SimpleNamespace(command="hook-release"), send_request=fake_send)
+
+    assert rc == shared.EXIT_OK
+    assert captured["payload"] == {"cmd": "RELEASE", "session": "s2"}
+
+
+def test_hook_acquire_always_exits_zero_when_daemon_down(monkeypatch):
+    def boom(sock, payload):
+        raise ConnectionError("daemon not running")
+
+    _feed_stdin(monkeypatch, json.dumps({"session_id": "s1", "prompt": "hi"}))
+    rc = cli.cmd_hook_acquire(SimpleNamespace(command="hook-acquire"), send_request=boom)
+    assert rc == shared.EXIT_OK
+
+
+def test_hook_acquire_exits_zero_on_garbage_stdin(monkeypatch):
+    _feed_stdin(monkeypatch, "not json at all {{{")
+    rc = cli.cmd_hook_acquire(SimpleNamespace(command="hook-acquire"), send_request=None)
+    assert rc == shared.EXIT_OK
+
+
+def test_hook_release_exits_zero_on_empty_stdin(monkeypatch):
+    _feed_stdin(monkeypatch, "")
+    rc = cli.cmd_hook_release(SimpleNamespace(command="hook-release"), send_request=None)
+    assert rc == shared.EXIT_OK
+
+
+def test_hook_acquire_missing_session_id_does_not_call_daemon(monkeypatch):
+    called = {"n": 0}
+
+    def fake_send(sock, payload):
+        called["n"] += 1
+        return {"ok": True}
+
+    _feed_stdin(monkeypatch, json.dumps({"prompt": "no session id here"}))
+    rc = cli.cmd_hook_acquire(SimpleNamespace(command="hook-acquire"), send_request=fake_send)
+    assert rc == shared.EXIT_OK
+    assert called["n"] == 0
+
+
+def test_main_hook_acquire_is_silent_and_exits_zero(monkeypatch, capsys):
+    monkeypatch.setattr(cli.ipc, "send_request", lambda *a, **k: {"ok": True, "status": "ACTIVE"})
+    _feed_stdin(monkeypatch, json.dumps({"session_id": "s1", "prompt": "hi"}))
+
+    exit_code = cli.main(["hook-acquire"])
+
+    out = capsys.readouterr()
+    assert exit_code == shared.EXIT_OK
+    # MUST be empty: Claude Code injects UserPromptSubmit stdout into the prompt.
+    assert out.out == ""
+
+
+def test_main_hook_release_is_silent_and_exits_zero(monkeypatch, capsys):
+    monkeypatch.setattr(cli.ipc, "send_request", lambda *a, **k: {"ok": True})
+    _feed_stdin(monkeypatch, json.dumps({"session_id": "s1"}))
+
+    exit_code = cli.main(["hook-release"])
+
+    out = capsys.readouterr()
+    assert exit_code == shared.EXIT_OK
+    assert out.out == ""

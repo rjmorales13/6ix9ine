@@ -96,6 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("daemon-restart")
     subparsers.add_parser("daemon-status")
 
+    # Claude Code hook entrypoints. These read the hook payload as JSON on
+    # stdin, ALWAYS exit 0, and print NOTHING (handled specially in main()).
+    subparsers.add_parser("hook-acquire")
+    subparsers.add_parser("hook-release")
+
     return parser
 
 
@@ -142,6 +147,51 @@ def cmd_track(args, send_request: Deps = None) -> tuple[dict, int]:
     except ConnectionError as exc:
         return {"ok": False, "error": f"daemon not running: {exc}"}, shared.EXIT_DAEMON_NOT_RUNNING
     return response, (shared.EXIT_OK if response.get("ok") else shared.EXIT_GENERAL_ERROR)
+
+
+# --- Claude Code hook entrypoints ---
+#
+# These are invoked by Claude Code as `6ix9ine hook-acquire` / `hook-release`
+# with the hook payload delivered as JSON on stdin. They have two hard
+# contracts that the normal CLI commands do NOT:
+#   1. ALWAYS exit 0. UserPromptSubmit/Stop treat a non-zero exit as a blocking
+#      error (erasing the prompt / refusing to let Claude stop). A failure of
+#      6ix9ine itself must never break the user's actual Claude Code session.
+#   2. Print NOTHING to stdout. Claude Code injects a UserPromptSubmit hook's
+#      stdout into the prompt context, so any normal CLI JSON output would
+#      corrupt every prompt. main() dispatches these BEFORE its print path.
+
+
+def _hook_send_request(send_request: Deps) -> Callable:
+    # Keep the prompt hot path snappy: bound the daemon round-trip at 3s.
+    return send_request or (lambda path, payload: ipc.send_request(path, payload, timeout=3.0))
+
+
+def cmd_hook_acquire(args, send_request: Deps = None) -> int:
+    """UserPromptSubmit hook: acquire the session, then exit 0 silently."""
+    try:
+        data = json.load(sys.stdin)
+        session_id = data.get("session_id") or ""
+        reason = (data.get("prompt") or "")[:80]
+        if session_id:
+            ns = argparse.Namespace(session_key=session_id, tool="claude", reason=reason)
+            cmd_acquire(ns, send_request=_hook_send_request(send_request))
+    except Exception:
+        pass
+    return shared.EXIT_OK
+
+
+def cmd_hook_release(args, send_request: Deps = None) -> int:
+    """Stop hook: release the session, then exit 0 silently."""
+    try:
+        data = json.load(sys.stdin)
+        session_id = data.get("session_id") or ""
+        if session_id:
+            ns = argparse.Namespace(session_key=session_id, all=False)
+            cmd_release(ns, send_request=_hook_send_request(send_request))
+    except Exception:
+        pass
+    return shared.EXIT_OK
 
 
 def cmd_status(args, send_request: Deps = None) -> tuple[dict, int]:
@@ -451,6 +501,13 @@ def main(argv: Optional[list] = None) -> int:
     if args.version:
         print(shared.version_string())
         return shared.EXIT_OK
+
+    # Hook entrypoints bypass the normal print-JSON dispatch entirely: they must
+    # emit NOTHING on stdout and ALWAYS return 0 (see cmd_hook_acquire).
+    if args.command == "hook-acquire":
+        return cmd_hook_acquire(args)
+    if args.command == "hook-release":
+        return cmd_hook_release(args)
 
     dispatch = {
         "acquire": cmd_acquire,
