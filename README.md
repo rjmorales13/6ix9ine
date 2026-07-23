@@ -153,13 +153,35 @@ Real Homebrew, real binaries — `brew upgrade` and `brew uninstall` just work l
 
 > Distributed via our own tap, not the official [formulae.brew.sh](https://formulae.brew.sh) index (`homebrew-core`). That's a genuine, first-class Homebrew install either way — it's just not yet *searchable* on brew.sh. Submitting to `homebrew-core` is a goal for once 6ix9ine has wider adoption, not a blocker to installing today.
 
-Homebrew can't run privileged setup steps for you automatically, so finish setup with:
+Homebrew can't run privileged setup steps for you automatically, so finish setup with three one-time commands:
+
+**Step 1 — install the privileged helper:**
 
 ```bash
-6ix9ine setup-privileged-helper   # installs the root LaunchDaemon (prompts for sudo)
-6ix9ine install-hooks --all       # wires up agent lifecycle hooks
-6ix9ine daemon-start              # starts the background daemon
+6ix9ine setup-privileged-helper
 ```
+
+This will show a `Password:` prompt in your terminal. That's normal — it's macOS's standard `sudo` authorization asking for **your own Mac login password**, the same one you use to unlock your laptop or install other apps. Nothing is sent anywhere and no new account is created. Nothing will appear on screen as you type the password (not even dots) — that's expected, just type it and press Return.
+
+Why it needs this: keeping your Mac awake while docked with the lid closed requires a small background helper with the specific OS-level permission to override sleep. macOS requires admin authorization to install any such background service — see "Layer 3: A helper that blocks" above for exactly what it can and can't do (one job: block/unblock sleep on command; nothing else).
+
+**Step 2 — wire up agent hooks:**
+
+```bash
+6ix9ine install-hooks --all
+```
+
+No password prompt for this one. It registers 6ix9ine with any supported agent CLIs found on your machine (Claude Code, OpenCode, etc.) so sessions get tracked automatically.
+
+> ⚠️ **Known issue:** this command currently crashes with `ModuleNotFoundError: No module named 'hooks'` in the Homebrew-distributed binary — a packaging bug being tracked separately, not yet fixed. If you hit this, hooks aren't wired up yet; you can still use 6ix9ine manually via `6ix9ine acquire`/`6ix9ine release` in the meantime.
+
+**Step 3 — start the background daemon:**
+
+```bash
+6ix9ine daemon-start
+```
+
+No password prompt for this one either. It starts the user-level process that tracks active sessions and tells the helper when to block or unblock sleep.
 
 Then open the dashboard any time with `t69`.
 
