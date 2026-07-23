@@ -70,20 +70,29 @@ log "Building binaries with PyInstaller..."
 for script in cli tui daemon helper; do
     name="6ix9ine"
     entry="bin/cli.py"
+    # cli.py imports the repo-root `hooks` package (from hooks import ...) at
+    # runtime. PyInstaller only searches the entry script's own dir (bin/) by
+    # default, so it never discovers/bundles hooks/ unless we add the repo root
+    # (this script's CWD) to the analysis search path. Scoped to the CLI binary
+    # only; the other three entrypoints do not import hooks.
+    paths_flag="--paths ."
     if [ "$script" = "tui" ]; then
         name="t69"
         entry="bin/tui.py"
+        paths_flag=""
     elif [ "$script" = "daemon" ]; then
         name="com.rjmorales.6ix9ine.daemon"
         entry="bin/daemon.py"
+        paths_flag=""
     elif [ "$script" = "helper" ]; then
         name="com.rjmorales.6ix9ine.helper"
         entry="bin/helper.py"
+        paths_flag=""
     fi
 
     log "Building $name..."
     # We use --strip to apply symbol stripping to the bootloader and libraries
-    .venv313/bin/pyinstaller --onefile --strip --clean $ARCH_FLAGS --name "$name" "$entry"
+    .venv313/bin/pyinstaller --onefile --strip --clean $ARCH_FLAGS $paths_flag --name "$name" "$entry"
 done
 
 # Revert version injection so git is clean
