@@ -9,72 +9,57 @@ AGENT_NAME = "claude"
 CONFIG_DIR = Path.home() / ".claude"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 
-# Absolute path to the installed CLI wrapper (see install.sh) -- deterministic
-# per-$HOME, independent of whichever interpreter happens to run this module.
-_CLI_PATH = str(Path.home() / ".local" / "bin" / "6ix9ine")
+# Fallback absolute path to the source-install CLI wrapper (see install.sh),
+# used only when `6ix9ine` is not discoverable on PATH. A Homebrew install
+# instead resolves via shutil.which("6ix9ine") -> <brew-prefix>/bin/6ix9ine.
+_CLI_FALLBACK_PATH = str(Path.home() / ".local" / "bin" / "6ix9ine")
 
-# Real Claude Code hooks receive their payload as JSON on stdin (not via
-# {placeholder} substitution in args -- see 6ix9ine-rap-sheet-docs/HOOKS.md).
-# Both snippets swallow every exception and always exit 0: UserPromptSubmit
-# and Stop both treat exit code 2 as a *blocking* error (erasing the prompt,
-# or refusing to let Claude stop, respectively), so a hook that fails loudly
-# here would break the user's actual Claude Code session, not just 6ix9ine.
-_ACQUIRE_CODE = (
-    "import json, subprocess, sys\n"
-    "try:\n"
-    "    data = json.load(sys.stdin)\n"
-    "    session_id = data.get('session_id') or ''\n"
-    "    reason = (data.get('prompt') or '')[:80]\n"
-    "    if session_id:\n"
-    "        subprocess.run(\n"
-    f"            [{_CLI_PATH!r}, 'acquire', session_id, '--tool', 'claude', '--reason', reason],\n"
-    "            timeout=3,\n"
-    "        )\n"
-    "except Exception:\n"
-    "    pass\n"
-)
+# Hooks are installed as `6ix9ine hook-acquire` / `6ix9ine hook-release`: the
+# command is the resolved 6ix9ine binary and the sole arg is a subcommand that
+# cli.py's own argparse handles. This works identically for the frozen
+# PyInstaller binary (what Homebrew ships) and the source install.
+#
+# The PREVIOUS implementation instead installed `<python> -c "<embedded code>"`,
+# reusing sys.executable as the interpreter. In the frozen binary sys.executable
+# is the 6ix9ine binary itself, so `6ix9ine -c "<code>"` hit argparse, which
+# rejects `-c` and exits 2. Claude Code treats exit 2 from UserPromptSubmit as a
+# hard block, so every prompt submission was erased -- a real user lockout. The
+# markers below let us still recognise and strip that stale/broken shape from an
+# already-affected settings.json (migration / self-heal).
+_ACQUIRE_SUBCOMMAND = "hook-acquire"
+_RELEASE_SUBCOMMAND = "hook-release"
 
-_RELEASE_CODE = (
-    "import json, subprocess, sys\n"
-    "try:\n"
-    "    data = json.load(sys.stdin)\n"
-    "    session_id = data.get('session_id') or ''\n"
-    "    if session_id:\n"
-    f"        subprocess.run([{_CLI_PATH!r}, 'release', session_id], timeout=3)\n"
-    "except Exception:\n"
-    "    pass\n"
-)
+# Substrings that, taken together, reliably identify one of our OLD `-c`
+# payloads without false-matching unrelated `python -c` hooks.
+_ACQUIRE_MARKERS = ("json.load(sys.stdin)", "6ix9ine", "acquire")
+_RELEASE_MARKERS = ("json.load(sys.stdin)", "6ix9ine", "release")
+# The old Bash PreToolUse PID-tracking hook. It never worked even from source
+# (a NameError on an undefined _CLI_PATH inside the executed snippet was
+# swallowed by a bare except, printing the payload unmodified) and used the same
+# exit-2-prone mechanism. It is no longer installed; these markers exist only so
+# uninstall()/self-heal can strip it from an already-affected settings.json.
+_BASH_MARKERS = ("json.load(sys.stdin)", "jobs -p", "track")
 
-# PreToolUse hook that wraps Bash commands to track background command PIDs.
-# The epilogue captures `jobs -p` after the original command exits and reports
-# them to the daemon via `6ix9ine track`. Prologue reports the tool shell PID
-# itself if run_in_background: true.
-_BASH_HOOK_CODE = (
-    "import json, subprocess, sys\n"
-    "try:\n"
-    "    data = json.load(sys.stdin)\n"
-    "    session_id = data.get('session_id') or ''\n"
-    "    command = data.get('tool_input', {}).get('command') or ''\n"
-    "    run_in_background = data.get('tool_input', {}).get('run_in_background', False)\n"
-    "    if not session_id or not command:\n"
-    "        print(json.dumps(data))\n"
-    "        sys.exit(0)\n"
-    "    prologue = ''\n"
-    "    if run_in_background:\n"
-    "        prologue = f'{_CLI_PATH!r} track {session_id!r} --tool claude --pids $$ >/dev/null 2>&1; '\n"
-    "    epilogue = (f'; __69_rc=$?; __69_pids=$(jobs -p); '\n"
-    "                f'[ -n \"$__69_pids\" ] && {_CLI_PATH!r} track {session_id!r} --tool claude --pids $__69_pids >/dev/null 2>&1; '\n"
-    "                f'exit $__69_rc')\n"
-    "    wrapped_command = prologue + command + epilogue\n"
-    "    data['tool_input']['command'] = wrapped_command\n"
-    "    print(json.dumps(data))\n"
-    "except Exception:\n"
-    "    print(json.dumps(data) if 'data' in dir() else '{}')\n"
-)
+_BASH_TRACK_PERM = "Bash(6ix9ine track:*)"
 
 
 def detect() -> bool:
     return CONFIG_DIR.exists()
+
+
+def _cli_path() -> str:
+    """Resolve the 6ix9ine binary to invoke from the hook.
+
+    Prefer PATH resolution (a Homebrew install puts `6ix9ine` on PATH), then
+    the frozen binary itself if we're running frozen but not yet on PATH, then
+    the source-install fallback.
+    """
+    resolved = shutil.which("6ix9ine")
+    if resolved:
+        return resolved
+    if getattr(sys, "frozen", False):
+        return sys.executable
+    return _CLI_FALLBACK_PATH
 
 
 def _load_settings() -> dict:
@@ -86,41 +71,70 @@ def _load_settings() -> dict:
     return {}
 
 
-def _make_group(code: str) -> dict:
+def _make_group(subcommand: str) -> dict:
     return {
         "hooks": [
             {
                 "type": "command",
-                "command": sys.executable,
-                "args": ["-c", code],
+                "command": _cli_path(),
+                "args": [subcommand],
             }
         ]
     }
 
 
-def _contains_our_group(groups: list, code: str) -> bool:
-    # Matched on args only (not "command"), so this stays correct even if
-    # install() and verify()/uninstall() run under different interpreters
-    # (e.g. in tests) -- the code payload is what identifies our entry.
+def _is_our_hook(hook: dict, subcommand: str | None, markers: tuple[str, ...]) -> bool:
+    """True if `hook` is one of ours -- either the current subcommand shape or a
+    stale old `-c "<embedded code>"` shape identified by all of `markers`."""
+    if not isinstance(hook, dict) or hook.get("type") != "command":
+        return False
+    args = hook.get("args") or []
+    if subcommand is not None and list(args[:1]) == [subcommand]:
+        return True
+    if len(args) >= 2 and args[0] == "-c":
+        code = args[1] or ""
+        return all(marker in code for marker in markers)
+    return False
+
+
+def _contains_our_group(groups: list, subcommand: str | None, markers: tuple[str, ...]) -> bool:
     for group in groups:
         for hook in group.get("hooks", []):
-            if hook.get("type") == "command" and hook.get("args") == ["-c", code]:
+            if _is_our_hook(hook, subcommand, markers):
                 return True
     return False
 
 
-def _make_bash_hook_group() -> dict:
-    """PreToolUse hook with Bash matcher for tracking background command PIDs."""
-    return {
-        "matcher": "Bash",
-        "hooks": [
-            {
-                "type": "command",
-                "command": sys.executable,
-                "args": ["-c", _BASH_HOOK_CODE],
-            }
-        ],
-    }
+def _strip_our_hooks(groups: list, subcommand: str | None, markers: tuple[str, ...]) -> list:
+    """Return a new group list with our hooks (old and new shape) removed;
+    groups left empty by the removal are dropped, foreign groups are preserved."""
+    cleaned = []
+    for group in groups:
+        original_hooks = group.get("hooks")
+        if original_hooks is None:
+            cleaned.append(group)
+            continue
+        kept = [h for h in original_hooks if not _is_our_hook(h, subcommand, markers)]
+        if kept:
+            new_group = dict(group)
+            new_group["hooks"] = kept
+            cleaned.append(new_group)
+    return cleaned
+
+
+def _remove_bash_track_permission(settings: dict) -> None:
+    """Strip the stale Bash(6ix9ine track:*) permission the old installer added."""
+    permissions = settings.get("permissions")
+    if not isinstance(permissions, dict):
+        return
+    allow_list = permissions.get("allow")
+    if not isinstance(allow_list, list) or _BASH_TRACK_PERM not in allow_list:
+        return
+    permissions["allow"] = [p for p in allow_list if p != _BASH_TRACK_PERM]
+    if not permissions["allow"]:
+        permissions.pop("allow", None)
+    if not permissions:
+        settings.pop("permissions", None)
 
 
 def install() -> dict:
@@ -130,28 +144,27 @@ def install() -> dict:
     settings = _load_settings()
     hooks = settings.setdefault("hooks", {})
 
-    prompt_group = hooks.setdefault("UserPromptSubmit", [])
-    if not _contains_our_group(prompt_group, _ACQUIRE_CODE):
-        prompt_group.append(_make_group(_ACQUIRE_CODE))
+    # Self-heal + install: strip any stale/broken or duplicate 6ix9ine entries
+    # first, then append exactly one current-shape group. Re-running install
+    # after an upgrade therefore auto-repairs an already-affected user.
+    for event, subcommand, markers in (
+        ("UserPromptSubmit", _ACQUIRE_SUBCOMMAND, _ACQUIRE_MARKERS),
+        ("Stop", _RELEASE_SUBCOMMAND, _RELEASE_MARKERS),
+    ):
+        groups = _strip_our_hooks(hooks.get(event, []), subcommand, markers)
+        groups.append(_make_group(subcommand))
+        hooks[event] = groups
 
-    stop_group = hooks.setdefault("Stop", [])
-    if not _contains_our_group(stop_group, _RELEASE_CODE):
-        stop_group.append(_make_group(_RELEASE_CODE))
+    # The Bash PreToolUse PID-tracking hook is intentionally NOT installed
+    # (never worked; used the exit-2-prone mechanism -- see _BASH_MARKERS).
+    # Still strip any stale copy so an affected user is repaired on re-install.
+    pretooluse = _strip_our_hooks(hooks.get("PreToolUse", []), None, _BASH_MARKERS)
+    if pretooluse:
+        hooks["PreToolUse"] = pretooluse
+    else:
+        hooks.pop("PreToolUse", None)
 
-    pretooluse_groups = hooks.setdefault("PreToolUse", [])
-    bash_group_exists = any(
-        g.get("matcher") == "Bash" and _contains_our_group([g], _BASH_HOOK_CODE)
-        for g in pretooluse_groups
-    )
-    if not bash_group_exists:
-        pretooluse_groups.append(_make_bash_hook_group())
-
-    # Add Bash(6ix9ine track:*) to permissions.allow (idempotent)
-    permissions = settings.setdefault("permissions", {})
-    allow_list = permissions.setdefault("allow", [])
-    bash_track_perm = "Bash(6ix9ine track:*)"
-    if bash_track_perm not in allow_list:
-        allow_list.append(bash_track_perm)
+    _remove_bash_track_permission(settings)
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(json.dumps(settings, indent=2))
@@ -165,32 +178,18 @@ def uninstall() -> dict:
     settings = _load_settings()
     hooks = settings.get("hooks", {})
 
-    for event, code in (("UserPromptSubmit", _ACQUIRE_CODE), ("Stop", _RELEASE_CODE)):
-        remaining = [group for group in hooks.get(event, []) if not _contains_our_group([group], code)]
+    for event, subcommand, markers in (
+        ("UserPromptSubmit", _ACQUIRE_SUBCOMMAND, _ACQUIRE_MARKERS),
+        ("Stop", _RELEASE_SUBCOMMAND, _RELEASE_MARKERS),
+        ("PreToolUse", None, _BASH_MARKERS),
+    ):
+        remaining = _strip_our_hooks(hooks.get(event, []), subcommand, markers)
         if remaining:
             hooks[event] = remaining
         else:
             hooks.pop(event, None)
 
-    # Remove our Bash PreToolUse hook
-    pretooluse = hooks.get("PreToolUse", [])
-    remaining_pretooluse = [
-        g for g in pretooluse
-        if not (g.get("matcher") == "Bash" and _contains_our_group([g], _BASH_HOOK_CODE))
-    ]
-    if remaining_pretooluse:
-        hooks["PreToolUse"] = remaining_pretooluse
-    else:
-        hooks.pop("PreToolUse", None)
-
-    # Remove Bash track permission
-    permissions = settings.get("permissions", {})
-    allow_list = permissions.get("allow", [])
-    permissions["allow"] = [p for p in allow_list if p != "Bash(6ix9ine track:*)"]
-    if not permissions["allow"]:
-        permissions.pop("allow", None)
-    if not permissions:
-        settings.pop("permissions", None)
+    _remove_bash_track_permission(settings)
 
     if not hooks:
         settings.pop("hooks", None)
@@ -202,12 +201,8 @@ def uninstall() -> dict:
 def verify() -> bool:
     settings = _load_settings()
     hooks = settings.get("hooks", {})
-    # Check UserPromptSubmit, Stop, and PreToolUse Bash hook
-    has_acquire = _contains_our_group(hooks.get("UserPromptSubmit", []), _ACQUIRE_CODE)
-    has_release = _contains_our_group(hooks.get("Stop", []), _RELEASE_CODE)
-    pretooluse = hooks.get("PreToolUse", [])
-    has_bash_hook = any(
-        g.get("matcher") == "Bash" and _contains_our_group([g], _BASH_HOOK_CODE)
-        for g in pretooluse
+    has_acquire = _contains_our_group(
+        hooks.get("UserPromptSubmit", []), _ACQUIRE_SUBCOMMAND, _ACQUIRE_MARKERS
     )
-    return has_acquire and has_release and has_bash_hook
+    has_release = _contains_our_group(hooks.get("Stop", []), _RELEASE_SUBCOMMAND, _RELEASE_MARKERS)
+    return has_acquire and has_release
