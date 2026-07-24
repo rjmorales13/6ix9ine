@@ -405,6 +405,93 @@ the existing `prune_dead` — was independently reviewed and rejected for two re
 
 ---
 
+## Case study 6: OpenCode's `timeout: 3000` never gave the frozen binary time to even start (v1.0.4)
+
+### What was wrong
+
+`hooks/opencode.py`'s `PLUGIN_TEMPLATE` calls `execFileSync(CLI, [...], { timeout: 3000, stdio:
+"ignore" })` for both the `chat.message` acquire call and the `event`/`session.idle` release call.
+3000ms sounds generous for a CLI subprocess that just needs to write a small JSON payload over
+IPC. It isn't. The real, Homebrew-distributed `6ix9ine` binary is a PyInstaller **onefile** build,
+which re-extracts its bundled interpreter and dependencies into a temp directory on every cold
+start before a single line of the program's own code runs. That bootstrap overhead alone measured
+~3.2-3.7s on the maintainer's machine — confirmed by timing `6ix9ine --version`, a subcommand that
+does zero daemon I/O and still took the same 3.2-3.7s. The 3000ms timeout was shorter than the
+binary's own startup time, before it had even reached the code that talks to the daemon. Every
+real OpenCode turn's `execFileSync` call fired, waited 3 seconds, SIGTERM'd the still-starting
+child process, and threw `ETIMEDOUT` — which the plugin's own `try/catch` swallowed per the
+"6ix9ine failing must never break an OpenCode turn" contract from Case study 2. That contract is
+correct and necessary (a hung or slow 6ix9ine call must never freeze an OpenCode turn), but it also
+meant this failure was **completely invisible from OpenCode's side** — no error in the terminal,
+no broken turn, nothing to notice. The practical effect: OpenCode sessions were never actually
+registered with the daemon at all, silently, on every single turn, on real user installs — the
+same failure class as Case study 5 (session tracking quietly not happening), but caused by timing
+instead of missing pid plumbing.
+
+### How it was found
+
+Following Case study 4's lesson ("test the actual frozen binary, not source") directly: rather than
+trusting that the plugin's generated code "looked right" (it did — correct hook names, correct
+`execFileSync` form, correct bare-name CLI resolution, all fixed in prior case studies), the
+generated calls were driven against the **real Homebrew-installed frozen binary**, not a source
+checkout. A temporary diagnostic build of the plugin logged the caught exception's `err.code`
+instead of silently discarding it in the `catch` block (the same diagnostic-marker technique as
+Case study 2) and was invoked directly with `execFileSync` at a Node REPL against the real binary.
+It logged `ETIMEDOUT` every time at the existing 3000ms value. Timing `6ix9ine --version` directly
+(no daemon call, no acquire/release, nothing but PyInstaller's own bootstrap) confirmed the
+3.2-3.7s cold start was the binary's own startup overhead, not slow daemon work that a code fix
+could speed up — ruling out "optimize the acquire path" as a fix and pointing squarely at the
+timeout value itself.
+
+### The real problem
+
+- `timeout: 3000` implicitly assumed the CLI subprocess starts executing its own logic
+  near-instantly, which holds for a normal Python-from-source invocation but not for a
+  PyInstaller-onefile binary, whose bootstrap (unpacking the bundled runtime to a temp dir on every
+  cold start) happens **before** any of the program's actual code — including the fast
+  daemon-IPC call the timeout was sized for — ever runs.
+- Because `execFileSync`'s timeout produces a **caught, swallowed exception** rather than a visible
+  crash (by design, per Case study 2's own contract), a too-short timeout here fails in the single
+  worst possible way for anyone to notice: total, silent, permanent non-function on every
+  real-world install, while looking completely fine in any test that doesn't invoke the real frozen
+  binary end-to-end.
+- An A/B test against the real binary made the causal link undeniable: `timeout: 3000` fails
+  every time with `ETIMEDOUT`; `timeout: 10000` succeeds in ~3.3s, and the session correctly
+  appears in `6ix9ine status` afterward. Nothing else about the call changed between the two runs.
+
+### The fix
+
+- Raised the timeout on both the acquire and release `execFileSync` calls from `3000` to `10000`
+  milliseconds — comfortable margin over the observed 3.2-3.7s cold start, not just barely clearing
+  it.
+- Introduced `_ACQUIRE_RELEASE_TIMEOUT_MS` as a named module-level constant in `hooks/opencode.py`
+  (mirroring the existing `_CLI_PATH` constant) and threaded it into the generated template as a
+  real `TIMEOUT_MS` JS constant referenced by both calls, rather than duplicating a bare `10000`
+  literal in two places that could silently drift apart on a future edit.
+- Nothing else about the template changed — `stdio: "ignore"`, the `execFileSync` array-args form,
+  the bare `"6ix9ine"` CLI resolution via PATH, and the `try/catch` swallow-on-failure contract are
+  all untouched; none of them were the defect.
+
+### How it was verified
+
+1. Unit test added (`tests/unit/test_hooks_opencode.py`) asserting the generated plugin's timeout
+   is `_ACQUIRE_RELEASE_TIMEOUT_MS` (10000) — not the old `3000` — for **both** the acquire and
+   release calls independently, and that the value is sourced from one named constant rather than
+   two independent literals, so a future regression back to a too-short value is caught by the test
+   suite instead of requiring another live investigation.
+2. Full suite run (`.venv313/bin/pytest`) — all existing and new tests green.
+3. Generated the plugin against a scratch config directory (never the real, live
+   `~/.config/opencode/plugins/6ix9ine-hook.ts`) and inspected the output directly: a real
+   `TIMEOUT_MS = 10000` constant referenced by both `execFileSync` calls.
+4. Ran `bun build` on that generated `.ts` file — compiled cleanly, confirming it's syntactically
+   valid and not just that Python wrote *a* file (same check as Case study 2 and Case study 5).
+5. The underlying live A/B test (3000ms fails with `ETIMEDOUT` every time; 10000ms succeeds in
+   ~3.3s and the session appears in `6ix9ine status`) is what originally diagnosed this bug and is
+   the same test that validates the fix — the fixed value is exactly the one proven to work against
+   the real frozen binary, not a guessed larger number.
+
+---
+
 ## Universal checklist for adding hook support for a new CLI
 
 Do **not** start from the `hooks/newagent.py` template in [CONTRIBUTING.md](CONTRIBUTING.md) as
