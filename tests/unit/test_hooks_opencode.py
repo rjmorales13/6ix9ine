@@ -120,6 +120,35 @@ def test_install_passes_process_pid_to_acquire(monkeypatch, tmp_path):
     assert "--pid" not in release_call
 
 
+def test_install_uses_a_timeout_that_survives_frozen_binary_cold_start(
+    monkeypatch, tmp_path
+):
+    # Regression test: the frozen, Homebrew-distributed binary has a
+    # PyInstaller onefile cold-start of ~3.2-3.7s (verified even for
+    # `6ix9ine --version`, which does zero daemon I/O). The old
+    # `timeout: 3000` value was shorter than that cold-start, so every real
+    # acquire/release call was SIGTERM'd before the CLI subprocess even
+    # finished starting up -- and the resulting ETIMEDOUT was invisible,
+    # silently swallowed by the try/catch, so sessions never actually
+    # registered with the daemon. Confirmed live via an A/B test: 3000ms
+    # fails every time, 10000ms succeeds in ~3.3s. See
+    # docs/TROUBLESHOOTING-HOOKS.md, Case study 6.
+    project_dir, _ = _point_at(monkeypatch, tmp_path)
+    project_dir.mkdir(parents=True)
+
+    opencode.install()
+
+    content = (project_dir / "plugins" / "6ix9ine-hook.ts").read_text()
+    assert "timeout: 3000" not in content
+    assert f"const TIMEOUT_MS = {opencode._ACQUIRE_RELEASE_TIMEOUT_MS}" in content
+    assert opencode._ACQUIRE_RELEASE_TIMEOUT_MS >= 10000
+
+    acquire_call = content.split('"chat.message"')[1].split("event:")[0]
+    release_call = content.split("event:")[1]
+    assert "timeout: TIMEOUT_MS" in acquire_call
+    assert "timeout: TIMEOUT_MS" in release_call
+
+
 def test_install_falls_back_to_home_level(monkeypatch, tmp_path):
     _, home_dir = _point_at(monkeypatch, tmp_path)
     home_dir.mkdir(parents=True)

@@ -30,6 +30,20 @@ PLUGIN_FILENAME = "6ix9ine-hook.ts"
 # turn instead of once at install time.
 _CLI_PATH = "6ix9ine"
 
+# The frozen, Homebrew-distributed binary has a PyInstaller onefile cold-start
+# of ~3.2-3.7s (verified: even `6ix9ine --version`, which does zero daemon
+# I/O, takes that long -- it's bootstrap overhead, not slow work). A timeout
+# below that window means every real acquire/release call gets SIGTERM'd by
+# execFileSync before the subprocess even finishes starting, and the
+# resulting ETIMEDOUT is invisible -- swallowed by the try/catch below per
+# the "6ix9ine failing must never break an OpenCode turn" contract, so
+# sessions silently never register with the daemon at all. 10s comfortably
+# clears the observed cold-start with real margin; confirmed live via an A/B
+# test (3000ms: ETIMEDOUT every time; 10000ms: succeeds in ~3.3s and the
+# session appears in `6ix9ine status`). See docs/TROUBLESHOOTING-HOOKS.md,
+# Case study 6.
+_ACQUIRE_RELEASE_TIMEOUT_MS = 10000
+
 # PID sourcing: process.pid inside the plugin factory is the long-lived
 # OpenCode host process's own pid, NOT a per-call worker/child. Verified
 # against the actually-installed @opencode-ai/plugin's PluginInput type
@@ -45,12 +59,13 @@ PLUGIN_TEMPLATE = (
     'import { execFileSync } from "node:child_process"\n'
     "\n"
     f"const CLI = {_CLI_PATH!r}\n"
+    f"const TIMEOUT_MS = {_ACQUIRE_RELEASE_TIMEOUT_MS}\n"
     "\n"
     "export const SixNinePlugin = async () => {\n"
     "  return {\n"
     '    "chat.message": async (input) => {\n'
     "      try {\n"
-    '        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn", "--pid", process.pid.toString()], { timeout: 3000, stdio: "ignore" })\n'
+    '        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn", "--pid", process.pid.toString()], { timeout: TIMEOUT_MS, stdio: "ignore" })\n'
     "      } catch (err) {\n"
     "        // 6ix9ine failing must never break an OpenCode turn\n"
     "      }\n"
@@ -60,7 +75,7 @@ PLUGIN_TEMPLATE = (
     "      const sessionID = input.event.properties?.sessionID\n"
     "      if (!sessionID) return\n"
     "      try {\n"
-    '        execFileSync(CLI, ["release", sessionID], { timeout: 3000, stdio: "ignore" })\n'
+    '        execFileSync(CLI, ["release", sessionID], { timeout: TIMEOUT_MS, stdio: "ignore" })\n'
     "      } catch (err) {\n"
     "        // 6ix9ine failing must never break an OpenCode turn\n"
     "      }\n"
