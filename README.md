@@ -7,13 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![macOS](https://img.shields.io/badge/macOS-supported-000000?logo=apple&logoColor=white)](#requirements)
 
-<!--
-  DEMO GIF SLOT — record a short clip (agent starts → SLEEP BLOCKED → agent ends → SLEEP AVAILABLE),
-  save it as docs/demo.gif, then replace the SVG line below with:
-      ![6ix9ine in action](docs/demo.gif)
-  Until then the full-dashboard SVG stands in as the hero image.
--->
-![6ix9ine dashboard — live view](docs/dashboard-full.svg)
+![6ix9ine in action](docs/demo.gif)
 
 *Agent starts → `🚫 SLEEP BLOCKED`. Last agent finishes → `💤 SLEEP AVAILABLE`. No toggles, no cleanup.*
 
