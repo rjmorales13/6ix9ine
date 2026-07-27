@@ -113,7 +113,9 @@ alongside an unrelated agent session. See
 non-functional implementation was found and fixed, and for the real API details (verified
 against the actual installed `@opencode-ai/plugin` package, not just docs); see Case study 4
 (same doc) for a later fix (v1.0.3) to a hardcoded CLI path that went stale across install
-methods.
+methods, and Case study 6 (v1.0.5) for why the acquire/release `execFileSync` timeout has to be
+10s, not 3s — the frozen Homebrew binary's own cold start (~3.2-3.7s) is longer than a 3s
+timeout, so every call silently failed until this was fixed.
 
 ### Hook System
 
@@ -158,12 +160,16 @@ const CLI = "6ix9ine" // bare command name -- resolved via PATH at call time, no
                        // baked in as an absolute path. See TROUBLESHOOTING-HOOKS.md
                        // Case study 4 for why an absolute, install-time-resolved
                        // path goes stale across install-method changes here.
+const TIMEOUT_MS = 10000 // frozen Homebrew binary cold-starts in ~3.2-3.7s; a
+                          // shorter timeout SIGTERMs the CLI before its IPC
+                          // request ever reaches the daemon, silently swallowed
+                          // by the try/catch below. See Case study 6.
 
 export const SixNinePlugin = async () => {
   return {
     "chat.message": async (input) => {
       try {
-        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn", "--pid", process.pid.toString()], { timeout: 3000, stdio: "ignore" })
+        execFileSync(CLI, ["acquire", input.sessionID, "--tool", "opencode", "--reason", "opencode turn", "--pid", process.pid.toString()], { timeout: TIMEOUT_MS, stdio: "ignore" })
       } catch (err) {
         // 6ix9ine failing must never break an OpenCode turn
       }
@@ -173,7 +179,7 @@ export const SixNinePlugin = async () => {
       const sessionID = input.event.properties?.sessionID
       if (!sessionID) return
       try {
-        execFileSync(CLI, ["release", sessionID], { timeout: 3000, stdio: "ignore" })
+        execFileSync(CLI, ["release", sessionID], { timeout: TIMEOUT_MS, stdio: "ignore" })
       } catch (err) {
         // 6ix9ine failing must never break an OpenCode turn
       }
