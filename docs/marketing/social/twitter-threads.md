@@ -208,7 +208,7 @@ better than text.*
 
 ## Pre-launch checklist
 
-- [ ] **Record the demo GIF** (`RECORD-DEMO-GIF.md`) and wire it into the README hero slot
+- [x] **Record the demo GIF** (`RECORD-DEMO-GIF.md`) and wire it into the README hero slot
 - [ ] Confirm `brew install rjmorales13/6ix9ine/6ix9ine` works on a clean machine
 - [ ] Skim the top of the README as a first-time visitor — does the problem land in 15 seconds?
 - [ ] Draft the HN Show HN and have the tab open for launch-day morning
