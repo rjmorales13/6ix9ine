@@ -4,8 +4,8 @@
 > The snitch that rats on sleep 🐀 — keeps your Mac awake only while work is happening, then lets it go back to sleep like nothing ever happened.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![macOS](https://img.shields.io/badge/macOS-supported-000000?logo=apple&logoColor=white)](#requirements)
+[![macOS 14+ only](https://img.shields.io/badge/macOS-14%2B_only-000000?logo=apple&logoColor=white)](#-requirements)
+[![Install with Homebrew](https://img.shields.io/badge/install-brew-FBB040?logo=homebrew&logoColor=white)](#-homebrew-recommended)
 
 ![6ix9ine in action](docs/demo.gif)
 
@@ -60,8 +60,14 @@ Built for people running long, hands-off work on a Mac:
 
 ## ⚙️ Requirements
 
-- macOS 14+
-- Python 3.13+
+| Install method | What you need |
+|---|---|
+| **Homebrew** (recommended) | macOS 14+ — and nothing else. The binaries are self-contained, so **you do not need Python installed.** |
+| **From source** | macOS 14+ and Python 3.13+ (what `install.sh` looks for). |
+
+> **macOS only, for now.** 6ix9ine is built directly on macOS power management — `pmset disablesleep`, IOKit sleep assertions, LaunchAgents and LaunchDaemons — so there's no Linux or Windows build today.
+>
+> Want one? [Open a feature request →](https://github.com/rjmorales13/6ix9ine/issues/new) Whether it gets built comes down to whether people actually ask for it, and right now there's no signal either way. The reference-counting and hook layers are platform-agnostic; it's the sleep-blocking layer that would need a per-OS implementation.
 
 ## 🚀 Getting Started
 
