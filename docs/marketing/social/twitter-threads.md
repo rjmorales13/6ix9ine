@@ -209,8 +209,10 @@ better than text.*
 ## Pre-launch checklist
 
 - [x] **Record the demo GIF** (`RECORD-DEMO-GIF.md`) and wire it into the README hero slot
-- [ ] Confirm `brew install rjmorales13/6ix9ine/6ix9ine` works on a clean machine
-- [ ] Skim the top of the README as a first-time visitor — does the problem land in 15 seconds?
+- [x] **Set GitHub repo description + topics** — was blank, so every search result, topic page, and link preview rendered an empty repo. 20 topics set (`claude-code`, `ai-agents`, `keep-awake`, `caffeinate`, `pmset`, `clamshell`, …). Homepage still blank pending the GitHub Pages landing page.
+- [x] **Confirm `brew install rjmorales13/6ix9ine/6ix9ine` works on a clean machine** — verified by the maintainer.
+- [x] **Skim the top of the README as a first-time visitor** — problem lands well inside 15 seconds (line 4 + the GIF caption carry it). Two badges were working against it and got fixed: `Python 3.13+` was false friction (Homebrew ships frozen binaries needing **no** Python — the full 389-test suite passes on 3.12), and `macOS-supported` understated the constraint. Requirements now split by install method, plus a macOS-only disclaimer routing Linux/Windows interest to a feature request.
+- [x] **Post the X/Twitter thread** — posted 2026-07-31 from the app account. 5 posts chained, GIF on the hero, link held to the final post.
 - [ ] Draft the HN Show HN and have the tab open for launch-day morning
 - [ ] Pre-write Reddit replies to the obvious objections ("why not caffeinate?", "why trust root?")
 
