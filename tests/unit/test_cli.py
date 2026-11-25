@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import plistlib
 from types import SimpleNamespace
 
 import pytest
@@ -362,6 +363,8 @@ def test_cmd_daemon_start_writes_plist_when_absent(isolated_daemon_plist):
     )
     assert isolated_daemon_plist.exists()
     assert shared.DAEMON_BUNDLE_ID in isolated_daemon_plist.read_text()
+    config = plistlib.loads(isolated_daemon_plist.read_bytes())
+    assert config["EnvironmentVariables"] == {"SIXNINE_STATE_DIR": str(shared.state_dir())}
     assert response["regenerated_plist"] is True
 
 

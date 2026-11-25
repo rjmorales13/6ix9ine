@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import plistlib
 import subprocess
 import sys
 import time
@@ -340,34 +341,20 @@ def _daemon_launch_config() -> tuple[list[str], str]:
 
 
 def _render_daemon_plist(program_arguments: list[str], working_dir: str) -> str:
-    log_out = str(shared.state_dir() / "daemon.log")
-    log_err = str(shared.state_dir() / "daemon.err.log")
-    args_str = "\n".join(f"\t\t<string>{arg}</string>" for arg in program_arguments)
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key>
-	<string>{shared.DAEMON_BUNDLE_ID}</string>
-	<key>ProgramArguments</key>
-	<array>
-{args_str}
-	</array>
-	<key>WorkingDirectory</key>
-	<string>{working_dir}</string>
-	<key>RunAtLoad</key>
-	<true/>
-	<key>KeepAlive</key>
-	<true/>
-	<key>ThrottleInterval</key>
-	<integer>10</integer>
-	<key>StandardOutPath</key>
-	<string>{log_out}</string>
-	<key>StandardErrorPath</key>
-	<string>{log_err}</string>
-</dict>
-</plist>
-"""
+    state_dir = shared.state_dir()
+    config = {
+        "Label": shared.DAEMON_BUNDLE_ID,
+        "ProgramArguments": program_arguments,
+        "WorkingDirectory": working_dir,
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ThrottleInterval": 10,
+        "StandardOutPath": str(state_dir / "daemon.log"),
+        "StandardErrorPath": str(state_dir / "daemon.err.log"),
+    }
+    if os.environ.get("SIXNINE_STATE_DIR"):
+        config["EnvironmentVariables"] = {"SIXNINE_STATE_DIR": str(state_dir)}
+    return plistlib.dumps(config).decode("utf-8")
 
 
 def _read_plist_text() -> Optional[str]:
@@ -498,7 +485,9 @@ def cmd_daemon_stop(run: Deps = None, send_request: Deps = None, sleep: Deps = N
 
 def cmd_daemon_restart(run: Deps = None, send_request: Deps = None, sleep: Deps = None) -> tuple[dict, int]:
     run = run or subprocess.run
-    cmd_daemon_stop(run=run, send_request=send_request, sleep=sleep)
+    stopped, exit_code = cmd_daemon_stop(run=run, send_request=send_request, sleep=sleep)
+    if exit_code != shared.EXIT_OK:
+        return stopped, exit_code
     return cmd_daemon_start(run=run, send_request=send_request, sleep=sleep)
 
 
@@ -520,7 +509,7 @@ def build_setup_helper_script(project_root: Optional[Path], owner_uid: int) -> s
 
     if getattr(sys, "frozen", False):
         cli_dir = Path(sys.executable).parent
-        # In a Homebrew installation, sys.executable is <prefix>/bin/6ix9ine
+        # In a Homebrew installation, sys.executable is <prefix>/bin/staywoke
         # the helper binary is in the same bin/ directory, and the plist is in the prefix/ directory.
         src_bin = cli_dir / "com.rjmorales.6ix9ine.helper"
         src_plist = cli_dir.parent / "com.rjmorales.6ix9ine.helper.plist"

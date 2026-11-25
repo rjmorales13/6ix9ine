@@ -40,8 +40,8 @@ def test_install_writes_real_hook_schema(monkeypatch, tmp_path):
     # subcommand dispatched through cli.py's own argparse (works frozen too).
     assert prompt_hook["args"] == ["hook-acquire"]
     assert stop_hook["args"] == ["hook-release"]
-    assert prompt_hook["command"].endswith("6ix9ine")
-    assert stop_hook["command"].endswith("6ix9ine")
+    assert prompt_hook["command"].endswith("staywoke")
+    assert stop_hook["command"].endswith("staywoke")
     # UserPromptSubmit/Stop don't support matchers -- must not be set.
     assert "matcher" not in written["hooks"]["UserPromptSubmit"][0]
     assert "matcher" not in written["hooks"]["Stop"][0]
@@ -66,13 +66,13 @@ def test_install_never_uses_dash_c_interpreter_mechanism(monkeypatch, tmp_path):
 def test_install_resolves_cli_path_via_which(monkeypatch, tmp_path):
     config_dir, settings_file = _point_at(monkeypatch, tmp_path)
     config_dir.mkdir()
-    monkeypatch.setattr(claude.shutil, "which", lambda name: "/opt/homebrew/bin/6ix9ine")
+    monkeypatch.setattr(claude.shutil, "which", lambda name: "/opt/homebrew/bin/staywoke")
 
     claude.install()
 
     written = json.loads(settings_file.read_text())
     prompt_hook = written["hooks"]["UserPromptSubmit"][0]["hooks"][0]
-    assert prompt_hook["command"] == "/opt/homebrew/bin/6ix9ine"
+    assert prompt_hook["command"] == "/opt/homebrew/bin/staywoke"
 
 
 def test_frozen_staywoke_hook_resolves_the_new_command(monkeypatch):
