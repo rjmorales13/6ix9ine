@@ -396,8 +396,8 @@ class SixNineApp(App):
         margin-left: 1;
     }}
     #auxiliary {{ height: 1fr; }}
-    #auxiliary-penguin {{
-        height: {tui_wordmark.PENGUIN_HEIGHT};
+    #auxiliary-scene {{
+        height: {tui_wordmark.MOUNTAIN_SCENE_HEIGHT};
         text-align: center;
         display: none;
     }}
@@ -458,7 +458,7 @@ class SixNineApp(App):
             yield Static(id="inspector")
             with Vertical(id="auxiliary-pane"):
                 yield DataTable(id="auxiliary")
-                yield Static(tui_wordmark.render_penguin(), id="auxiliary-penguin")
+                yield Static(tui_wordmark.MountainScene(), id="auxiliary-scene")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -487,14 +487,14 @@ class SixNineApp(App):
 
     def on_resize(self, event: events.Resize) -> None:
         self._render_wordmark()
-        self._update_penguin()
+        self._update_auxiliary_scene()
 
-    def _update_penguin(self) -> None:
+    def _update_auxiliary_scene(self) -> None:
         aux = self.query_one("#auxiliary", DataTable)
-        penguin = self.query_one("#auxiliary-penguin", Static)
+        scene = self.query_one("#auxiliary-scene", Static)
         # Leave room for the table header, both borders, and a horizontal scrollbar.
-        available_rows = BOTTOM_PANEL_HEIGHT - 4 - tui_wordmark.PENGUIN_HEIGHT
-        penguin.display = self.size.width >= 60 and aux.row_count <= available_rows
+        available_rows = BOTTOM_PANEL_HEIGHT - 4 - tui_wordmark.MOUNTAIN_SCENE_HEIGHT
+        scene.display = self.size.width >= 60 and aux.row_count <= available_rows
 
     # ------------------------------------------------------------ refresh
 
@@ -541,7 +541,7 @@ class SixNineApp(App):
             # DataTable raises DuplicateKey on repeated row keys.
             aux.add_row(*styled_aux_cells(row), key=f"{row[0]}#{row[1]}")
 
-        self._update_penguin()
+        self._update_auxiliary_scene()
         self._update_inspector(monitor)
 
     def _cursor_key(self, table: DataTable) -> Optional[str]:

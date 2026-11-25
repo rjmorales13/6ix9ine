@@ -1,6 +1,7 @@
 """Render the Stay Woke dashboard header with terminal half blocks."""
 from __future__ import annotations
 
+from rich.console import Console, ConsoleOptions, RenderResult
 from rich.style import Style
 from rich.text import Text
 
@@ -11,29 +12,31 @@ WOKE_COLOR = "#6f5a88"
 TAGLINE_COLOR = "#565e68"
 TAGLINE = "— keeps your Mac awake while agents work"
 COLLAPSE_HEIGHT = 30
-PENGUIN = (
-    "...DDDDDD...",
-    "..DFFFFFFD..",
-    ".DFFHFFHFFD.",
-    ".DFFKFFKFFD.",
-    ".DFFFOOFFFD.",
-    "..DFFOOFFD..",
-    "..DTTTTTTD..",
-    ".DDFFFFTtDD.",
-    "ODFFFFFTtFDO",
-    ".DFFFFFTtFD.",
-    "..DDFFFFDD..",
-    "..OOO..OOO..",
+MOUNTAIN_PIXELS = (
+    "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+    "DBBBDBBBBBDDDBBBDDDBDDBSMBDDBBBBBDDD",
+    "DDDDDDDDDDBDDBCCCCCBCCSSMBBDDBDDDDBB",
+    "DDDDDDDBBCCCCCCCRRRRSMSSBBBBSSBDDDDD",
+    "DBMMSMBDDDDBCMMCCRACMSSMMBMBMMMSSMBD",
+    "BBBBBBMMMMSMMBMSMMBMSMMSMBMMMBBBMBMB",
+    "BMMBBBMMBMMSSMSSMMMMBMMBBBBBBMMMSSMB",
+    "MSSSSSSSSSSSSSSSRRSSSSSSSSSSSSSSSSSM",
+    "MSSSSISSSSSSSSSSSMPSSSSSSSSSSSSISSSM",
+    "MSSSSSSSSSSSRSSSSPPPSSSSSSSSSSSSSSSM",
+    "MSSSSSSSSSSSSSSSSPPSMBSSSSSSSSSSSSSM",
+    "BMMMMMMMMMMMMMMBMMMMMBBMMMMMMMMMMMMB",
 )
-PENGUIN_HEIGHT = len(PENGUIN) // 2
-PENGUIN_COLORS = {
-    "D": "#404650",
-    "F": "#fff3d9",
-    "H": "#8394a5",
-    "K": "#10141a",
-    "O": "#ffa62b",
-    "T": "#40cbcb",
-    "t": "#18898e",
+MOUNTAIN_SCENE_HEIGHT = len(MOUNTAIN_PIXELS) // 2
+MOUNTAIN_COLORS = {
+    "D": "#141922",
+    "B": "#2a3548",
+    "M": "#465469",
+    "S": "#5c6f8a",
+    "I": "#8c9db2",
+    "C": "#695256",
+    "R": "#b5775d",
+    "A": "#ffad4a",
+    "P": "#0a0d13",
 }
 
 # Six pixel rows render as three terminal rows.
@@ -70,21 +73,21 @@ def render_banner() -> Text:
     return banner
 
 
-def render_penguin() -> Text:
-    penguin = Text()
-    for row, (top, bottom) in enumerate(zip(PENGUIN[::2], PENGUIN[1::2])):
-        if row:
-            penguin.append("\n")
-        for upper, lower in zip(top, bottom):
-            foreground = PENGUIN_COLORS.get(upper)
-            background = PENGUIN_COLORS.get(lower)
-            if foreground:
-                penguin.append("▀", style=Style(color=foreground, bgcolor=background))
-            elif background:
-                penguin.append("▄", style=Style(color=background))
-            else:
-                penguin.append(" ")
-    return penguin
+class MountainScene:
+    """Render the artwork at the width provided by the auxiliary pane."""
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        width = options.max_width
+        source_width = len(MOUNTAIN_PIXELS[0])
+        scene = Text(no_wrap=True)
+        for row, (top, bottom) in enumerate(zip(MOUNTAIN_PIXELS[::2], MOUNTAIN_PIXELS[1::2])):
+            if row:
+                scene.append("\n")
+            for column in range(width):
+                pixel = (2 * column + 1) * source_width // (2 * width)
+                scene.append("▀", style=Style(color=MOUNTAIN_COLORS[top[pixel]],
+                                              bgcolor=MOUNTAIN_COLORS[bottom[pixel]]))
+        yield scene
 
 
 def render_collapsed() -> Text:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from rich.console import Console
+from rich.segment import Segment
 from rich.text import Text
 
 import tui_wordmark
@@ -31,13 +33,14 @@ def test_collapsed_includes_display_name_and_tagline_on_one_line():
     assert tui_wordmark.TAGLINE_COLOR in styles
 
 
-def test_penguin_renders_at_a_fixed_width_in_its_full_palette():
-    penguin = tui_wordmark.render_penguin()
-    lines = penguin.plain.splitlines()
-    assert len(lines) == tui_wordmark.PENGUIN_HEIGHT == 6
-    assert all(len(line) == 12 for line in lines)
-    palette = " ".join(str(span.style) for span in penguin.spans)
-    assert all(color in palette for color in tui_wordmark.PENGUIN_COLORS.values())
+@pytest.mark.parametrize("width", [24, 36, 48])
+def test_mountain_scene_fills_the_available_width(width):
+    console = Console(width=width, color_system="truecolor")
+    lines = console.render_lines(tui_wordmark.MountainScene(), pad=False)
+    assert len(lines) == tui_wordmark.MOUNTAIN_SCENE_HEIGHT == 6
+    assert all(Segment.get_line_length(line) == width for line in lines)
+    styles = " ".join(str(segment.style) for line in lines for segment in line)
+    assert tui_wordmark.MOUNTAIN_COLORS["P"] in styles
 
 
 # ----------------------------------------------------------- collapse rule
