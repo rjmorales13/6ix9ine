@@ -74,15 +74,21 @@ def render_banner() -> Text:
 
 
 class MountainScene:
-    """Render the artwork at the width provided by the auxiliary pane."""
+    """Fit the artwork within the pane while preserving its proportions."""
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        width = options.max_width
         source_width = len(MOUNTAIN_PIXELS[0])
+        columns_per_row = source_width // MOUNTAIN_SCENE_HEIGHT
+        height = min(MOUNTAIN_SCENE_HEIGHT, options.max_width // columns_per_row)
+        width = height * columns_per_row
         scene = Text(no_wrap=True)
-        for row, (top, bottom) in enumerate(zip(MOUNTAIN_PIXELS[::2], MOUNTAIN_PIXELS[1::2])):
+        padding = " " * ((options.max_width - width) // 2)
+        for row in range(height):
             if row:
                 scene.append("\n")
+            scene.append(padding)
+            top = MOUNTAIN_PIXELS[(4 * row + 1) * MOUNTAIN_SCENE_HEIGHT // (2 * height)]
+            bottom = MOUNTAIN_PIXELS[(4 * row + 3) * MOUNTAIN_SCENE_HEIGHT // (2 * height)]
             for column in range(width):
                 pixel = (2 * column + 1) * source_width // (2 * width)
                 scene.append("▀", style=Style(color=MOUNTAIN_COLORS[top[pixel]],

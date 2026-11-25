@@ -33,12 +33,14 @@ def test_collapsed_includes_display_name_and_tagline_on_one_line():
     assert tui_wordmark.TAGLINE_COLOR in styles
 
 
-@pytest.mark.parametrize("width", [24, 36, 48])
-def test_mountain_scene_fills_the_available_width(width):
+@pytest.mark.parametrize("width,art_columns,art_rows", [(24, 24, 4), (36, 36, 6), (48, 36, 6)])
+def test_mountain_scene_preserves_proportions_and_stays_centered(width, art_columns, art_rows):
     console = Console(width=width, color_system="truecolor")
     lines = console.render_lines(tui_wordmark.MountainScene(), pad=False)
-    assert len(lines) == tui_wordmark.MOUNTAIN_SCENE_HEIGHT == 6
-    assert all(Segment.get_line_length(line) == width for line in lines)
+    assert len(lines) == art_rows
+    margin = (width - art_columns) // 2
+    assert all(Segment.get_line_length(line) == margin + art_columns for line in lines)
+    assert all("".join(segment.text for segment in line) == " " * margin + "▀" * art_columns for line in lines)
     styles = " ".join(str(segment.style) for line in lines for segment in line)
     assert tui_wordmark.MOUNTAIN_COLORS["P"] in styles
 

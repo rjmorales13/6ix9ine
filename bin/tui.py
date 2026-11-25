@@ -398,7 +398,6 @@ class SixNineApp(App):
     #auxiliary {{ height: 1fr; }}
     #auxiliary-scene {{
         height: {tui_wordmark.MOUNTAIN_SCENE_HEIGHT};
-        text-align: center;
         display: none;
     }}
     DataTable {{ background: {tui_theme.BACKGROUND}; }}
