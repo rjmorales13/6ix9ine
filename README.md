@@ -1,4 +1,4 @@
-# 6ix9ine
+# Stay Woke
 
 > **Sleep management for AI agents.**
 > The snitch that rats on sleep 🐀 — keeps your Mac awake only while work is happening, then lets it go back to sleep like nothing ever happened.
@@ -74,7 +74,7 @@ Built for people running long, hands-off work on a Mac:
 ### 🍺 Homebrew (recommended)
 
 ```bash
-brew install rjmorales13/6ix9ine/6ix9ine
+brew install rjmorales13/6ix9ine/staywoke
 ```
 
 Real Homebrew, real binaries — `brew upgrade` and `brew uninstall` just work like any other formula. This auto-taps `rjmorales13/homebrew-6ix9ine` and installs in one shot.
@@ -86,7 +86,7 @@ Homebrew can't run privileged setup steps for you automatically, so finish setup
 **Step 1 — install the privileged helper:**
 
 ```bash
-6ix9ine setup-privileged-helper
+staywoke setup-privileged-helper
 ```
 
 This will show a `Password:` prompt in your terminal. That's normal — it's macOS's standard `sudo` authorization asking for **your own Mac login password**, the same one you use to unlock your laptop or install other apps. Nothing is sent anywhere and no new account is created. Nothing will appear on screen as you type the password (not even dots) — that's expected, just type it and press Return.
@@ -96,27 +96,29 @@ Why it needs this: keeping your Mac awake while docked with the lid closed requi
 **Step 2 — wire up agent hooks:**
 
 ```bash
-6ix9ine install-hooks --all
+staywoke install-hooks --all
 ```
 
-No password prompt for this one. It registers 6ix9ine with any supported agent CLIs found on your machine (Claude Code, OpenCode, etc.) so sessions get tracked automatically.
+No password prompt for this one. It registers Stay Woke with any supported agent CLIs found on your machine (Claude Code, OpenCode, etc.) so sessions get tracked automatically.
 
 **Step 3 — start the background daemon:**
 
 ```bash
-6ix9ine daemon-start
+staywoke daemon-start
 ```
 
 No password prompt for this one either. It starts the user-level process that tracks active sessions and tells the helper when to block or unblock sleep.
 
-Then open the dashboard any time with `t69`.
+Then open the dashboard any time with `staywoke` or `staywoke dashboard`.
+
+**Upgrading from 6ix9ine?** Follow the [Homebrew migration steps](docs/INSTALL.md#upgrading-from-6ix9ine) to refresh the helper, daemon, and agent hooks.
 
 ### 🛠️ From source
 
 Prefer building it yourself, or want the fully automated one-shot install (privileged helper, hooks, and daemon all set up for you, dashboard opens automatically)?
 
 ```bash
-git clone https://github.com/rjmorales13/6ix9ine.git && cd 6ix9ine && ./install.sh
+git clone https://github.com/rjmorales13/staywoke.git && cd staywoke && ./install.sh
 ```
 
 Here's what you'll see race by:

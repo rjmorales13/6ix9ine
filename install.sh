@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# One-command installer for 6ix9ine.
+# One-command installer for Stay Woke.
 #
-#   git clone https://github.com/rjmorales13/6ix9ine.git && cd 6ix9ine && ./install.sh
+#   git clone https://github.com/rjmorales13/staywoke.git && cd staywoke && ./install.sh
 #
 # Safe to re-run — every step is idempotent.
 set -euo pipefail
@@ -20,20 +20,17 @@ warn()  { printf " ${YELLOW}⚠${NC}  $1\n"; }
 fail()  { printf " ${RED}✗${NC}  ${BOLD}$1${NC}\n" >&2; exit 1; }
 detail(){ printf "     ${DIM}$1${NC}\n"; }
 
+ORIGINAL_PATH="$PATH"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_SUPPORT_DIR="$HOME/Library/Application Support/6ix9ine"
 VENV_DIR="$APP_SUPPORT_DIR/venv"
 BIN_DIR="$HOME/.local/bin"
-LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
-DAEMON_BUNDLE_ID="com.rjmorales.6ix9ine.daemon"
-DAEMON_PLIST_DST="$LAUNCH_AGENTS_DIR/${DAEMON_BUNDLE_ID}.plist"
-RUNTIME_MODULES=(daemon.py daemon_commands.py ipc.py lid_monitor.py shared.py thermal_monitor.py idle_tracker.py session_registry.py)
 
 # ── header ──────────────────────────────────────────────────────────────
 
 cat <<EOF
 
-  ${BOLD}6ix9ine${NC} ${DIM}— the snitch that rats on sleep${NC}
+  ${BOLD}Stay Woke${NC} ${DIM}— keeps your Mac awake while agents work${NC}
   ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 
 EOF
@@ -81,81 +78,35 @@ step "Installing Python dependencies"
 "$VENV_DIR/bin/pip" install --quiet -r "$REPO_ROOT/requirements.txt"
 ok "dependencies installed"
 
-# ── 5. Runtime copy ────────────────────────────────────────────────────
+# ── Command and helper ───────────────────────────────────────────────────
 
-step "Copying daemon runtime files"
-for module in "${RUNTIME_MODULES[@]}"; do
-  cp "$REPO_ROOT/bin/$module" "$APP_SUPPORT_DIR/$module"
-done
-detail "${#RUNTIME_MODULES[@]} modules copied"
-ok "runtime files ready"
-
-# ── 6. CLI wrappers ────────────────────────────────────────────────────
-
-step "Installing CLI wrappers → $BIN_DIR"
+step "Installing staywoke → $BIN_DIR"
 mkdir -p "$BIN_DIR"
-
-cat > "$BIN_DIR/6ix9ine" <<EOF
-#!/bin/sh
-exec "$VENV_DIR/bin/python3" "$REPO_ROOT/bin/cli.py" "\$@"
-EOF
-chmod 755 "$BIN_DIR/6ix9ine"
-
-cat > "$BIN_DIR/t69" <<EOF
-#!/bin/sh
-exec "$VENV_DIR/bin/python3" "$REPO_ROOT/bin/tui.py" "\$@"
-EOF
-chmod 755 "$BIN_DIR/t69"
-ok "6ix9ine and t69 installed"
-
-# ── 7. LaunchAgent plist ───────────────────────────────────────────────
-
-step "Generating LaunchAgent plist"
-mkdir -p "$LAUNCH_AGENTS_DIR"
-cat > "$DAEMON_PLIST_DST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key>
-	<string>$DAEMON_BUNDLE_ID</string>
-	<key>ProgramArguments</key>
-	<array>
-		<string>$VENV_DIR/bin/python3</string>
-		<string>$APP_SUPPORT_DIR/daemon.py</string>
-	</array>
-	<key>WorkingDirectory</key>
-	<string>$APP_SUPPORT_DIR</string>
-	<key>RunAtLoad</key>
-	<true/>
-	<key>KeepAlive</key>
-	<true/>
-	<key>ThrottleInterval</key>
-	<integer>10</integer>
-	<key>StandardOutPath</key>
-	<string>$APP_SUPPORT_DIR/daemon.log</string>
-	<key>StandardErrorPath</key>
-	<string>$APP_SUPPORT_DIR/daemon.err.log</string>
-</dict>
-</plist>
-EOF
-ok "LaunchAgent plist generated"
-
-# ── 8. Privileged helper ───────────────────────────────────────────────
+write_wrapper() {
+  printf '#!/bin/sh\nexec "%s/bin/python3" "%s/bin/%s.py" "$@"\n' "$VENV_DIR" "$REPO_ROOT" "$1"
+}
+wrapper="$(mktemp "$BIN_DIR/.staywoke.XXXXXX")"
+trap 'rm -f "$wrapper"' EXIT
+write_wrapper cli > "$wrapper"
+chmod 755 "$wrapper"
+mv -f "$wrapper" "$BIN_DIR/staywoke"
+export PATH="$BIN_DIR:$PATH"
 
 step "Setting up privileged helper"
-if "$BIN_DIR/6ix9ine" helper-status >/dev/null 2>&1; then
-  detail "already installed and running, skipping"
-else
-  "$BIN_DIR/6ix9ine" setup-privileged-helper
-  sleep 1
-fi
+"$BIN_DIR/staywoke" setup-privileged-helper
 ok "privileged helper ready"
 
-# ── 9. Hooks ───────────────────────────────────────────────────────────
+# ── Hooks ──────────────────────────────────────────────────────────────
 
 step "Installing agent hooks"
-HOOK_OUTPUT="$("$BIN_DIR/6ix9ine" install-hooks --all 2>&1)"
+HOOK_OUTPUT="$("$BIN_DIR/staywoke" install-hooks --all)" || true
+printf '%s\n' "$HOOK_OUTPUT" | "$PYTHON313" -c '
+import json, sys
+failed = json.load(sys.stdin).get("failed", {})
+for agent in ("claude", "opencode"):
+    if agent in failed:
+        sys.exit(f"{agent} hook setup failed: {failed[agent]}")
+'
 INSTALLED="$(echo "$HOOK_OUTPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(d.get('installed',[])))" 2>/dev/null || true)"
 if [ -n "$INSTALLED" ]; then
   detail "hooks installed for: $INSTALLED"
@@ -175,43 +126,48 @@ if [ -n "$FAILED_ITEMS" ]; then
 fi
 ok "hooks configured"
 
-# ── 10. Daemon ─────────────────────────────────────────────────────────
+# ── Daemon ─────────────────────────────────────────────────────────────
 
-step "Starting background daemon"
-if "$BIN_DIR/6ix9ine" daemon-status >/dev/null 2>&1; then
-  detail "already running, skipping"
-else
-  "$BIN_DIR/6ix9ine" daemon-start
-  sleep 1
-fi
+step "Restarting background daemon"
+"$BIN_DIR/staywoke" daemon-restart
 ok "daemon running"
+
+# Remove wrappers generated by earlier runs of this checkout only.
+for name in 6ix9ine t69; do
+  entry=cli
+  if [ "$name" = t69 ]; then entry=tui; fi
+  legacy="$BIN_DIR/$name"
+  if [ -f "$legacy" ] && [ ! -L "$legacy" ] && write_wrapper "$entry" | cmp -s - "$legacy"; then
+    rm -f "$legacy"
+  fi
+done
 
 # ── PATH reminder ──────────────────────────────────────────────────────
 
 PATH_MSG=""
-case ":$PATH:" in
+case ":$ORIGINAL_PATH:" in
   *":$BIN_DIR:"*) ;;
   *)
     PATH_MSG="yes"
     warn "$BIN_DIR not on PATH"
     detail "Add this to your shell profile:"
-    detail "  ${BOLD}export PATH=\"\$PATH:$BIN_DIR\"${NC}"
+    detail "  ${BOLD}export PATH=\"$BIN_DIR:\$PATH\"${NC}"
     ;;
 esac
 
 # ── Done ───────────────────────────────────────────────────────────────
 
 echo ""
-printf " ${GREEN}✓${NC}  ${BOLD}6ix9ine installed and running${NC}\n\n"
+printf " ${GREEN}✓${NC}  ${BOLD}Stay Woke installed and running${NC}\n\n"
 
 # ── Launch dashboard ───────────────────────────────────────────────────
 
-if [ -x "$BIN_DIR/t69" ]; then
+if [ -x "$BIN_DIR/staywoke" ]; then
   # Write a .command file and open it — guaranteed new Terminal window.
-  LAUNCHER="$APP_SUPPORT_DIR/launch-t69.command"
+  LAUNCHER="$APP_SUPPORT_DIR/launch-staywoke.command"
   cat > "$LAUNCHER" <<EOF
 #!/bin/sh
-exec "$BIN_DIR/t69"
+exec "$BIN_DIR/staywoke"
 EOF
   chmod +x "$LAUNCHER"
   # Save install window, open launcher, close install window.

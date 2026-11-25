@@ -1,183 +1,88 @@
 name: Release Automation
 
 on:
+  pull_request:
   push:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
-    name: Build Binary
+    name: Build and smoke test
     runs-on: ${{ matrix.os }}
     strategy:
-      # Do not cancel the other arch's build when one leg fails: for a release
-      # we want to know whether BOTH arches build, and during dry-run
-      # debugging cancelling the sibling leg hides its independent result.
       fail-fast: false
       matrix:
         include:
           - os: macos-15-intel
             arch: x86_64
-          - os: macos-14
+          - os: macos-15
             arch: arm64
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller psutil textual
+          python -m venv .venv313
+          .venv313/bin/python -m pip install pyinstaller -r requirements.txt
 
-      - name: Inject version and build binaries
+      - name: Build, package, and verify Stay Woke
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
         run: |
-          # On a real tag push GITHUB_REF is refs/tags/vX.Y.Z. On a manual
-          # workflow_dispatch dry-run it is refs/heads/<branch> (or a tag ref
-          # if dispatched against one), so strip the tag prefix only when it
-          # is actually a version tag; otherwise use a dev placeholder. This
-          # keeps TAG_VERSION free of slashes so the tarball name stays valid.
+          set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            version="${GITHUB_REF#refs/tags/v}"
           else
-            TAG_VERSION="dev-${GITHUB_RUN_ID}"
+            version="dev-${GITHUB_RUN_ID}"
           fi
-          # Inject version into shared.py. TAG_VERSION is a bash variable, so
-          # it must be passed to Python via the environment and read with
-          # os.environ. A bare {TAG_VERSION} inside the f-string has no '$', so
-          # bash never substitutes it and Python raises
-          # "NameError: name 'TAG_VERSION' is not defined".
-          TAG_VERSION="$TAG_VERSION" python -c "
-          import os, re, pathlib
-          version = os.environ['TAG_VERSION']
-          p = pathlib.Path('bin/shared.py')
-          c = p.read_text()
-          p.write_text(re.sub(r'VERSION = \"[^\"]+\"', f'VERSION = \"{version}\"', c))
-          "
-          
-          # Build each script using PyInstaller with strip.
-          # cli.py imports the repo-root `hooks` package (from hooks import ...)
-          # at runtime; PyInstaller only searches the entry script's own dir
-          # (bin/) by default and never discovers hooks/ without the repo root
-          # (this step's CWD) on the analysis search path. Scoped to the CLI
-          # binary; the other three entrypoints do not import hooks.
-          pyinstaller --onefile --strip --clean --paths . --name 6ix9ine bin/cli.py
-          pyinstaller --onefile --strip --clean --name t69 bin/tui.py
-          pyinstaller --onefile --strip --clean --name com.rjmorales.6ix9ine.daemon bin/daemon.py
-          pyinstaller --onefile --strip --clean --name com.rjmorales.6ix9ine.helper bin/helper.py
-          
-          # Package binaries and resources
-          mkdir -p release
-          cp dist/6ix9ine release/
-          cp dist/t69 release/
-          cp dist/com.rjmorales.6ix9ine.daemon release/
-          cp dist/com.rjmorales.6ix9ine.helper release/
-          cp -r docs/man release/man
-          cp plists/com.rjmorales.6ix9ine.helper.plist release/
-          
-          TARBALL="6ix9ine-v${TAG_VERSION}-${{ matrix.arch }}.tar.gz"
-          tar -czf "$TARBALL" -C release 6ix9ine t69 com.rjmorales.6ix9ine.daemon com.rjmorales.6ix9ine.helper man com.rjmorales.6ix9ine.helper.plist
-          shasum -a 256 "$TARBALL" > "${TARBALL}.sha256"
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          bash build.sh "$version"
+          archive="staywoke-v${version}-${TARGET_ARCH}.tar.gz"
+          mv "dist/staywoke-v${version}.tar.gz" "$archive"
+          shasum -a 256 "$archive" > "$archive.sha256"
+
+          unpacked="$(mktemp -d)"
+          tar -xzf "$archive" -C "$unpacked"
+          test "$(lipo -archs "$unpacked/staywoke")" = "$TARGET_ARCH"
+          test ! -e "$unpacked/6ix9ine"
+          test ! -e "$unpacked/t69"
+          "$unpacked/staywoke" --version | grep -F "Stay Woke v$version"
+          "$unpacked/staywoke" dashboard --help | grep -F "usage: staywoke dashboard"
+
+      - uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.arch }}
-          path: |
-            6ix9ine-v*-${{ matrix.arch }}.tar.gz*
+          path: staywoke-v*-${{ matrix.arch }}.tar.gz*
+          if-no-files-found: error
 
   release:
     name: Create Release
     needs: build
-    # Only publish a release and update the formula on a real tag push.
-    # Check the event name too, not just the ref: workflow_dispatch can be
-    # run against a tag ref from the UI, which would make a ref-only guard
-    # true and publish for real. Requiring event_name == 'push' guarantees a
-    # manual dispatch (branch OR tag ref) only builds/uploads artifacts and
-    # never creates a release or pushes to main.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
+          pattern: binaries-*
+          merge-multiple: true
+          path: dist
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+      - name: Verify release checksums
+        working-directory: dist
+        run: sha256sum -c ./*.sha256
 
-      - name: Flatten artifacts directory
-        run: |
-          mkdir -p dist
-          find artifacts -type f -name "*.tar.gz*" -exec cp {} dist/ \;
-          ls -la dist/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Homebrew formula SHA256 and URL
-        run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          SHA_ARM64=$(cat dist/6ix9ine-v${TAG_VERSION}-arm64.tar.gz.sha256 | cut -d ' ' -f 1)
-          SHA_INTEL=$(cat dist/6ix9ine-v${TAG_VERSION}-x86_64.tar.gz.sha256 | cut -d ' ' -f 1)
-          
-          # Checkout main branch explicitly to avoid detached HEAD on tag push
-          git checkout main
-          git pull origin main
-          
-          # Same class of bug as the build job: TAG_VERSION / SHA_ARM64 /
-          # SHA_INTEL are bash variables, so they must reach Python via the
-          # environment. Bare {TAG_VERSION} inside these f-strings has no '$',
-          # so bash never substitutes it and Python raises NameError. Pass them
-          # through os.environ instead.
-          TAG_VERSION="$TAG_VERSION" SHA_ARM64="$SHA_ARM64" SHA_INTEL="$SHA_INTEL" python -c "
-          import os, re, pathlib
-          tag_version = os.environ['TAG_VERSION']
-          sha_arm64 = os.environ['SHA_ARM64']
-          sha_intel = os.environ['SHA_INTEL']
-          p = pathlib.Path('Formula/6ix9ine.rb')
-          content = p.read_text()
-          
-          # Update URL & SHA256 for arm64 inside on_arm block
-          on_arm_pattern = r'(on_arm do\s+url\s+\")[^\"]+(\"\s+sha256\s+\")[^\"]+(\")'
-          content = re.sub(
-              on_arm_pattern,
-              f'\\g<1>https://github.com/rjmorales13/6ix9ine/releases/download/v{tag_version}/6ix9ine-v{tag_version}-arm64.tar.gz\\g<2>{sha_arm64}\\g<3>',
-              content,
-              flags=re.MULTILINE
-          )
-          
-          # Update URL & SHA256 for x86_64 inside on_intel block
-          on_intel_pattern = r'(on_intel do\s+url\s+\")[^\"]+(\"\s+sha256\s+\")[^\"]+(\")'
-          content = re.sub(
-              on_intel_pattern,
-              f'\\g<1>https://github.com/rjmorales13/6ix9ine/releases/download/v{tag_version}/6ix9ine-v{tag_version}-x86_64.tar.gz\\g<2>{sha_intel}\\g<3>',
-              content,
-              flags=re.MULTILINE
-          )
-          
-          # Update version
-          content = re.sub(r'version \"[^\"]+\"', f'version \"{tag_version}\"', content)
-          
-          p.write_text(content)
-          "
-          
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-          git add Formula/6ix9ine.rb
-          git commit -m "chore(release): Auto-update Homebrew formula for v${TAG_VERSION}"
-          git push origin main
+          fail_on_unmatched_files: true

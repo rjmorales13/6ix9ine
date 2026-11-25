@@ -35,7 +35,7 @@ def notify_summary(registry: SessionRegistry, thermal: "thermal_monitor.ThermalM
     if thermal.cutout_fired:
         message_parts.append(f"thermal cutout fired at {thermal.peak:.1f}°C")
     message = "; ".join(message_parts)
-    script = f'display notification "{message}" with title "6ix9ine"'
+    script = f'display notification "{message}" with title "{shared.DISPLAY_NAME}"'
     try:
         subprocess.run(["osascript", "-e", script], timeout=5, check=False)
     except (OSError, subprocess.TimeoutExpired):

@@ -5,6 +5,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from hooks import command_name
+
 AGENT_NAME = "claude"
 CONFIG_DIR = Path.home() / ".claude"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
@@ -12,7 +14,7 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 # Fallback absolute path to the source-install CLI wrapper (see install.sh),
 # used only when `6ix9ine` is not discoverable on PATH. A Homebrew install
 # instead resolves via shutil.which("6ix9ine") -> <brew-prefix>/bin/6ix9ine.
-_CLI_FALLBACK_PATH = str(Path.home() / ".local" / "bin" / "6ix9ine")
+_CLI_FALLBACK_DIR = Path.home() / ".local" / "bin"
 
 # Hooks are installed as `6ix9ine hook-acquire` / `6ix9ine hook-release`: the
 # command is the resolved 6ix9ine binary and the sole arg is a subcommand that
@@ -54,12 +56,12 @@ def _cli_path() -> str:
     the frozen binary itself if we're running frozen but not yet on PATH, then
     the source-install fallback.
     """
-    resolved = shutil.which("6ix9ine")
+    resolved = shutil.which(command_name())
     if resolved:
         return resolved
     if getattr(sys, "frozen", False):
         return sys.executable
-    return _CLI_FALLBACK_PATH
+    return str(_CLI_FALLBACK_DIR / command_name())
 
 
 def _load_settings() -> dict:

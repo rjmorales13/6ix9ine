@@ -6,91 +6,47 @@
 
 ## Option 1: Homebrew (Recommended)
 
-```bash
-# Add the tap
-brew tap rjmorales13/6ix9ine
-
-# Install
-brew install 6ix9ine
-
-# Set up the privileged helper (one-time, requires admin password)
-6ix9ine setup-privileged-helper
-
-# Install agent hooks
-6ix9ine install-hooks --all
-
-# Start the daemon
-6ix9ine daemon-start
-
-# Launch the TUI
-t69
+```sh
+brew install rjmorales13/6ix9ine/staywoke
+staywoke setup-privileged-helper
+staywoke daemon-start
+staywoke install-hooks --all
+staywoke dashboard
 ```
+
+### Upgrading from 6ix9ine
+
+Wait for active tasks to finish before restarting the background services.
+Run these commands after the Stay Woke formula is published in the existing
+`rjmorales13/6ix9ine` tap:
+
+```sh
+brew update
+brew migrate --formula 6ix9ine
+brew upgrade rjmorales13/6ix9ine/staywoke
+staywoke setup-privileged-helper
+staywoke daemon-restart
+staywoke install-hooks --all
+staywoke status
+```
+
+If Homebrew already migrated the formula during an earlier upgrade, skip
+`brew migrate`. Run the helper setup as your normal user and enter your Mac
+password when prompted. Reinstalling hooks updates the managed Claude Code
+and OpenCode hooks. Update your own aliases, scripts, and launchers to call
+`staywoke` or `staywoke dashboard`.
+
+The upgrade reuses the existing launchd labels, sockets, and Application Support
+directory. An existing `SIXNINE_STATE_DIR` override remains supported. If you
+use it, export it before restarting the daemon.
 
 ### Cutting a Release (For Maintainers)
 
-`.github/workflows/release.yml` triggers on a pushed `v*.*.*` tag, builds both arches, and
-publishes a GitHub Release — that part works correctly. **Its final "Update Homebrew formula"
-step has a known, unfixed bug**: the job's `actions/checkout` doesn't specify a `repository:`, so
-`git push origin main` at the end pushes to *this* repo's own copy of `Formula/6ix9ine.rb`
-(harmless, but not what anyone reads) instead of the real tap, `rjmorales13/homebrew-6ix9ine` — a
-separate GitHub repo that `brew tap`/`brew upgrade` actually reads from. The workflow reports
-green either way, because it did successfully push to *a* repo.
-
-Until that's fixed, every release needs a manual follow-up after the workflow finishes:
-
-```bash
-# Get the real checksums from the just-published release
-gh release download vX.Y.Z --repo rjmorales13/6ix9ine --pattern "*.sha256"
-
-# Edit $(brew --repo rjmorales13/6ix9ine)/Formula/6ix9ine.rb by hand: version, both
-# on_arm/on_intel urls, and both sha256 values -- mirror exactly what the workflow's
-# own (misdirected) sed/regex step does, see release.yml's "Update Homebrew formula" step
-cd "$(brew --repo rjmorales13/6ix9ine)"
-git add Formula/6ix9ine.rb && git commit -m "Update formula to vX.Y.Z" && git push origin main
-```
-
-Before running `brew upgrade` against a fresh release, it's worth downloading and running the raw
-binary standalone first (`gh release download`, extract, `xattr -d com.apple.quarantine`, run
-directly) to confirm the artifact itself is good — this isolates "is the binary actually broken"
-from "did something in Homebrew/the local environment go wrong," which otherwise look identical
-from the crash you'd see.
-
-### Homebrew Formula Structure (For Maintainers)
-
-The Homebrew formula should:
-1. Install Python 3.13+ dependency
-2. Install `psutil` and `textual` Python packages
-3. Copy `bin/` to `/opt/6ix9ine/`
-4. Symlink `6ix9ine` and `t69` to `/usr/local/bin/`
-5. Copy `plists/` to `/opt/6ix9ine/plists/`
-6. **NOT** run `setup-privileged-helper` automatically (user must do this explicitly for security)
-
-```ruby
-# Formula template (for reference)
-class SixNine < Formula
-  desc "Keep your Mac awake only while AI agents are working"
-  homepage "https://github.com/rjmorales13/6ix9ine"
-  url "https://github.com/rjmorales13/6ix9ine/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "..."
-  license "MIT"
-
-  depends_on "python@3.13"
-  depends_on "psutil" => :python
-  depends_on "textual" => :python
-
-  def install
-    prefix.install "bin", "hooks", "plists"
-    bin.install_symlink prefix/"bin/cli.py" => "6ix9ine"
-    bin.install_symlink prefix/"bin/tui.py" => "t69"
-  end
-
-  def post_install
-    ohai "Run '6ix9ine setup-privileged-helper' to complete installation"
-  end
-end
-```
-
----
+The release workflow builds and smoke-tests both macOS architectures for PRs,
+manual runs, and release tags. A pushed version tag publishes the verified
+archives and checksum files. Update the separate `homebrew-6ix9ine` tap PR
+with the published archive URLs and matching SHA-256 checksums. The application
+workflow does not write to the tap.
 
 ## Option 2: npm (For Node.js Developers)
 
@@ -231,35 +187,11 @@ The daemon auto-starts on login via its LaunchAgent plist.
 
 ## Upgrading
 
-`brew upgrade 6ix9ine` (or the npm/manual equivalent) only replaces the files on disk — it does
-**not** restart anything already running, and doesn't touch config generated by a previous
-version. After upgrading, run all three of these, in order, to actually pick up the new version:
-
-```bash
-# 1. Restart the daemon so it's running the new binary, not the old one still in memory
-6ix9ine daemon-start
-
-# 2. Re-register the root-privileged helper (its LaunchDaemon plist points at the
-#    versioned Cellar path, e.g. /opt/homebrew/Cellar/6ix9ine/1.0.4/, which no longer
-#    exists once the Cellar entry rotates to the new version). Requires admin password.
-6ix9ine setup-privileged-helper
-
-# 3. Regenerate any installed agent hooks/plugins from the current template
-6ix9ine install-hooks --all
-```
-
-Skipping step 2 leaves the daemon unable to reach the helper at all — `set_sleep_blocked` calls
-fail silently, and `6ix9ine status` will report `sleep_blocked: false` even with active sessions,
-with no error surfaced anywhere but the daemon's own logs. Skipping step 3 means any already-fixed
-bug in a hook template (e.g. Case study 6's timeout fix) silently does not apply — the plugin file
-on disk only changes when `install-hooks` actually rewrites it; the CLI binary being newer doesn't
-regenerate it for you.
-
-Also note: any agent process already running when you upgrade (e.g. an open OpenCode session)
-loaded its hook/plugin at its own startup and won't see a regenerated one until it's restarted —
-this applies per-session, not per-machine.
-
----
+Follow [Upgrading from 6ix9ine](#upgrading-from-6ix9ine) for the formula
+rename. For subsequent Stay Woke releases, run `brew upgrade staywoke`, refresh
+the privileged helper with `staywoke setup-privileged-helper`, and restart the
+daemon with `staywoke daemon-restart`. For a source installation, rerun
+`./install.sh` from the updated checkout.
 
 ## Verifying Installation
 

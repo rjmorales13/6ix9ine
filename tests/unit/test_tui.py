@@ -349,6 +349,10 @@ def test_app_mounts_with_monitor_and_aux_tables(monkeypatch):
             assert "1 active" in str(monitor.border_title)
             aux = app.query_one("#auxiliary")
             assert aux.row_count == 1
+            penguin = app.query_one("#auxiliary-penguin")
+            assert penguin.display
+            assert penguin.region.y == aux.region.bottom
+            assert penguin.region.x == aux.region.x
             wordmark = app.query_one("#wordmark")
             assert "\n" in plain_of(wordmark)  # full banner on tall terminal
 
@@ -363,7 +367,7 @@ def test_app_collapses_wordmark_on_short_terminal(monkeypatch):
             wordmark = app.query_one("#wordmark")
             plain = plain_of(wordmark)
             assert "\n" not in plain
-            assert "6ix9ine" in plain
+            assert "Stay Woke" in plain
 
     asyncio.run(go())
 
@@ -435,6 +439,7 @@ def test_app_survives_duplicate_auxiliary_process_names(monkeypatch):
     async def go():
         async with app.run_test(size=(110, 40)):
             assert app.query_one("#auxiliary").row_count == 2
+            assert not app.query_one("#auxiliary-penguin").display
 
     asyncio.run(go())
 

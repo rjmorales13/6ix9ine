@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Fully removes 6ix9ine from this Mac: agent hooks, the background daemon,
+# Fully removes Stay Woke from this Mac: agent hooks, the background daemon,
 # the root-privileged helper, and the Homebrew formula/tap.
 #
 # Order matters: the daemon/helper/hooks teardown must run *before* the
-# `6ix9ine` binary is uninstalled, since those steps shell out to the CLI's
+# `staywoke` binary is uninstalled, since those steps shell out to the CLI's
 # own subcommands (which know the exact LaunchAgent/LaunchDaemon paths) rather
 # than re-deriving them here, so this script can't drift out of sync with
 # bin/shared.py.
@@ -31,37 +31,40 @@ for arg in "$@"; do
             echo ""
             echo "  --keep-state   Do NOT delete ~/Library/Application Support/6ix9ine"
             echo "                 (logs, socket, local state). Removed by default, since"
-            echo "                 this script's job is to fully uninstall 6ix9ine."
+            echo "                 this script's job is to fully uninstall Stay Woke."
             exit 0
             ;;
     esac
 done
 
-# Prefer the Homebrew-installed binary explicitly. A bare `6ix9ine` on PATH
-# can resolve to an unrelated install (e.g. a leftover from-source
-# ./install.sh shim in ~/.local/bin) if it happens to sit earlier in PATH —
-# `brew install` warns about exactly this kind of shadowing. Falls back to
-# PATH lookup only when there's no Homebrew install to prefer, so this script
-# still works for a from-source-only install.
-SIXNINE_BIN="6ix9ine"
+# Prefer the installed Homebrew command, then try a source install.
+STAYWOKE_BIN=""
 if command -v brew &>/dev/null; then
     BREW_PREFIX="$(brew --prefix 2>/dev/null || true)"
-    if [ -n "$BREW_PREFIX" ] && [ -x "$BREW_PREFIX/bin/6ix9ine" ]; then
-        SIXNINE_BIN="$BREW_PREFIX/bin/6ix9ine"
+    if [ -n "$BREW_PREFIX" ]; then
+        for name in staywoke 6ix9ine; do
+            if [ -x "$BREW_PREFIX/bin/$name" ]; then
+                STAYWOKE_BIN="$BREW_PREFIX/bin/$name"
+                break
+            fi
+        done
     fi
 fi
+if [ -z "$STAYWOKE_BIN" ]; then
+    STAYWOKE_BIN="$(command -v staywoke || command -v 6ix9ine || true)"
+fi
 
-if command -v "$SIXNINE_BIN" &>/dev/null; then
+if [ -n "$STAYWOKE_BIN" ]; then
     log "Removing agent hooks..."
-    "$SIXNINE_BIN" uninstall-hooks --all || fail "uninstall-hooks failed (continuing)"
+    "$STAYWOKE_BIN" uninstall-hooks --all || fail "uninstall-hooks failed (continuing)"
 
     log "Stopping the background daemon..."
-    "$SIXNINE_BIN" daemon-stop || fail "daemon-stop failed (continuing; it may not have been running)"
+    "$STAYWOKE_BIN" daemon-stop || fail "daemon-stop failed (continuing; it may not have been running)"
 
     log "Removing the privileged helper (requires sudo)..."
-    "$SIXNINE_BIN" uninstall-helper || fail "uninstall-helper failed — the root LaunchDaemon may still be installed (continuing)"
+    "$STAYWOKE_BIN" uninstall-helper || fail "uninstall-helper failed — the root LaunchDaemon may still be installed (continuing)"
 else
-    warn "6ix9ine command not found — skipping hooks/daemon/helper teardown."
+    warn "Stay Woke command not found — skipping hooks/daemon/helper teardown."
     warn "If a daemon or privileged helper is still running from a prior install,"
     warn "remove them manually (see docs/INSTALL.md)."
 fi
@@ -70,16 +73,24 @@ fi
 # `brew list --formula` dump for an exact-line match — a direct query's exit
 # code is the same signal `brew uninstall`/`brew untap` use internally, so it
 # can't disagree with them the way a separately-parsed list can.
-if brew list --formula 6ix9ine &>/dev/null; then
-    log "Uninstalling the Homebrew formula..."
-    brew uninstall rjmorales13/6ix9ine/6ix9ine 2>/dev/null || brew uninstall 6ix9ine || fail "brew uninstall failed"
-else
-    log "Homebrew formula not installed, skipping."
-fi
+for formula in staywoke 6ix9ine; do
+    if brew list --formula "rjmorales13/6ix9ine/$formula" &>/dev/null; then
+        log "Uninstalling $formula from the Homebrew tap..."
+        brew uninstall "rjmorales13/6ix9ine/$formula" || fail "brew uninstall failed for $formula"
+    fi
+done
 
 if brew tap 2>/dev/null | grep -qx "rjmorales13/6ix9ine"; then
     log "Removing the rjmorales13/6ix9ine tap..."
     brew untap rjmorales13/6ix9ine || fail "brew untap failed"
+fi
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_BIN="$HOME/.local/bin/staywoke"
+SOURCE_PYTHON="$HOME/Library/Application Support/6ix9ine/venv/bin/python3"
+if [ -f "$SOURCE_BIN" ] && [ ! -L "$SOURCE_BIN" ] &&
+    printf '#!/bin/sh\nexec "%s" "%s/bin/cli.py" "$@"\n' "$SOURCE_PYTHON" "$REPO_ROOT" | cmp -s - "$SOURCE_BIN"; then
+    rm -f "$SOURCE_BIN" || fail "could not remove the source wrapper"
 fi
 
 STATE_DIR="${SIXNINE_STATE_DIR:-$HOME/Library/Application Support/6ix9ine}"
@@ -93,8 +104,8 @@ if [ -d "$STATE_DIR" ]; then
 fi
 
 if [ "$FAILED" -eq 1 ]; then
-    warn "6ix9ine uninstall completed with warnings — see above. Some components may not be fully removed."
+    warn "Stay Woke uninstall completed with warnings — see above. Some components may not be fully removed."
     exit 1
 fi
 
-log "6ix9ine has been uninstalled."
+log "Stay Woke has been uninstalled."

@@ -61,7 +61,18 @@ def test_install_does_not_hardcode_a_home_directory_path(monkeypatch, tmp_path):
     content = (project_dir / "plugins" / "6ix9ine-hook.ts").read_text()
     assert str(Path.home()) not in content
     assert ".local/bin" not in content
-    assert "const CLI = '6ix9ine'" in content
+    assert "const CLI = 'staywoke'" in content
+
+
+def test_install_updates_existing_plugin_to_use_staywoke(monkeypatch, tmp_path):
+    project_dir, _ = _point_at(monkeypatch, tmp_path)
+    project_dir.mkdir(parents=True)
+    monkeypatch.setattr(opencode, "command_name", lambda: "6ix9ine")
+    old_path = opencode.install()["config_path"]
+
+    monkeypatch.setattr(opencode, "command_name", lambda: "staywoke")
+    assert opencode.install()["config_path"] == old_path
+    assert "const CLI = 'staywoke'" in Path(old_path).read_text()
 
 
 def test_install_uses_execfile_form_not_shell_interpolation(monkeypatch, tmp_path):
