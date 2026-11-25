@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Optimized build script for 6ix9ine.
-# Builds the CLI, TUI, daemon, and helper binaries as standalone executables.
+# Build the Stay Woke command, daemon, and helper as standalone executables.
 set -euo pipefail
 
 BOLD=$'\033[1m'
@@ -21,7 +20,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 if [ "$(uname)" != "Darwin" ]; then
-    error "6ix9ine only supports building on macOS."
+    error "Stay Woke only supports building on macOS."
 fi
 
 # Find python3.13
@@ -50,9 +49,21 @@ fi
 log "Cleaning previous build artifacts..."
 rm -rf build dist *.spec
 
-# Inject version into shared.py
-log "Injecting version v${VERSION} into bin/shared.py..."
-"$PYTHON_BIN" -c "import re, pathlib; p = pathlib.Path('bin/shared.py'); c = p.read_text(); p.write_text(re.sub(r'VERSION = \"[^\"]+\"', 'VERSION = \"' + '$VERSION' + '\"', c))"
+# Inject the version into a copy so builds preserve local source edits.
+BUILD_SOURCE="$(mktemp -d)"
+trap 'rm -rf "$BUILD_SOURCE"' EXIT
+cp -R bin hooks "$BUILD_SOURCE/"
+log "Injecting version v${VERSION} into the build sources..."
+"$PYTHON_BIN" - "$BUILD_SOURCE/bin/shared.py" "$VERSION" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+path.write_text(re.sub(r'^VERSION = ".*"$', lambda _: f"VERSION = {json.dumps(sys.argv[2])}",
+                       path.read_text(), flags=re.MULTILINE))
+PY
 
 # Detect universal2 compatibility
 ARCH_FLAGS=""
@@ -67,51 +78,33 @@ fi
 
 # Build binaries
 log "Building binaries with PyInstaller..."
-for script in cli tui daemon helper; do
-    name="6ix9ine"
-    entry="bin/cli.py"
-    # cli.py imports the repo-root `hooks` package (from hooks import ...) at
-    # runtime. PyInstaller only searches the entry script's own dir (bin/) by
-    # default, so it never discovers/bundles hooks/ unless we add the repo root
-    # (this script's CWD) to the analysis search path. Scoped to the CLI binary
-    # only; the other three entrypoints do not import hooks.
-    paths_flag="--paths ."
-    if [ "$script" = "tui" ]; then
-        name="t69"
-        entry="bin/tui.py"
-        paths_flag=""
-    elif [ "$script" = "daemon" ]; then
+for script in cli daemon helper; do
+    name="staywoke"
+    if [ "$script" = "daemon" ]; then
         name="com.rjmorales.6ix9ine.daemon"
-        entry="bin/daemon.py"
-        paths_flag=""
     elif [ "$script" = "helper" ]; then
         name="com.rjmorales.6ix9ine.helper"
-        entry="bin/helper.py"
-        paths_flag=""
     fi
 
     log "Building $name..."
     # We use --strip to apply symbol stripping to the bootloader and libraries
-    .venv313/bin/pyinstaller --onefile --strip --clean $ARCH_FLAGS $paths_flag --name "$name" "$entry"
+    "$PYTHON_BIN" -m PyInstaller --onefile --strip --clean $ARCH_FLAGS \
+        --paths "$BUILD_SOURCE" --name "$name" "$BUILD_SOURCE/bin/$script.py"
 done
-
-# Revert version injection so git is clean
-log "Reverting changes to bin/shared.py..."
-git checkout bin/shared.py
 
 # Create release package
 log "Packaging build..."
 RELEASE_DIR="dist/release"
 mkdir -p "$RELEASE_DIR"
-cp dist/6ix9ine "$RELEASE_DIR/"
-cp dist/t69 "$RELEASE_DIR/"
+cp dist/staywoke "$RELEASE_DIR/"
 cp dist/com.rjmorales.6ix9ine.daemon "$RELEASE_DIR/"
 cp dist/com.rjmorales.6ix9ine.helper "$RELEASE_DIR/"
-cp -r docs/man "$RELEASE_DIR/man"
+mkdir -p "$RELEASE_DIR/man"
+cp docs/man/staywoke.1 "$RELEASE_DIR/man/"
 cp plists/com.rjmorales.6ix9ine.helper.plist "$RELEASE_DIR/"
 
-TARBALL="dist/6ix9ine-v${VERSION}.tar.gz"
-tar -czf "$TARBALL" -C "$RELEASE_DIR" 6ix9ine t69 com.rjmorales.6ix9ine.daemon com.rjmorales.6ix9ine.helper man com.rjmorales.6ix9ine.helper.plist
+TARBALL="dist/staywoke-v${VERSION}.tar.gz"
+tar -czf "$TARBALL" -C "$RELEASE_DIR" staywoke com.rjmorales.6ix9ine.daemon com.rjmorales.6ix9ine.helper man com.rjmorales.6ix9ine.helper.plist
 rm -rf "$RELEASE_DIR"
 
 # Compute SHA256 hash

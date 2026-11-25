@@ -66,7 +66,7 @@ class SixixNineine < Formula
   end
 
   test do
-    assert_match "6ix9ine v#{version}", shell_output("#{bin}/6ix9ine --version")
+    assert_match /(?:6ix9ine|Stay Woke) v#{Regexp.escape(version.to_s)}/, shell_output("#{bin}/6ix9ine --version")
     assert_match "usage: t69", shell_output("#{bin}/t69 --help")
   end
 end

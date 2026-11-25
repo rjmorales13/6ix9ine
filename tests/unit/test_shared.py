@@ -7,7 +7,7 @@ import shared
 
 def test_version_string_includes_codename():
     assert shared.CODENAME == "Gummo"
-    assert shared.version_string() == f"6ix9ine v{shared.VERSION} ({shared.CODENAME})"
+    assert shared.version_string() == f"Stay Woke v{shared.VERSION} ({shared.CODENAME})"
 
 
 def test_state_dir_defaults_to_application_support(monkeypatch):

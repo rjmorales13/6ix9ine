@@ -6,6 +6,7 @@ from pathlib import Path
 
 VERSION = "1.0.0"
 CODENAME = "Gummo"
+DISPLAY_NAME = "Stay Woke"
 
 VALID_AGENTS = {"claude", "opencode", "codex", "antigravity", "manual"}
 
@@ -34,7 +35,7 @@ _DURATION_PATTERN = re.compile(
 
 
 def version_string() -> str:
-    return f"6ix9ine v{VERSION} ({CODENAME})"
+    return f"{DISPLAY_NAME} v{VERSION} ({CODENAME})"
 
 
 def state_dir() -> Path:

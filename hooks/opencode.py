@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+from hooks import command_name
+
 AGENT_NAME = "opencode"
 # Verified against the real, installed @opencode-ai/plugin docs and, more
 # authoritatively, its actual shipped dist/index.d.ts on this machine (v1.4.10)
@@ -28,7 +30,6 @@ PLUGIN_FILENAME = "6ix9ine-hook.ts"
 # install() -- exactly the bug this fixes. A bare name self-heals across
 # install-method changes since it re-resolves against PATH on every opencode
 # turn instead of once at install time.
-_CLI_PATH = "6ix9ine"
 
 # The frozen, Homebrew-distributed binary has a PyInstaller onefile cold-start
 # of ~3.2-3.7s (verified: even `6ix9ine --version`, which does zero daemon
@@ -58,7 +59,7 @@ _ACQUIRE_RELEASE_TIMEOUT_MS = 10000
 PLUGIN_TEMPLATE = (
     'import { execFileSync } from "node:child_process"\n'
     "\n"
-    f"const CLI = {_CLI_PATH!r}\n"
+    "const CLI = __CLI_NAME__\n"
     f"const TIMEOUT_MS = {_ACQUIRE_RELEASE_TIMEOUT_MS}\n"
     "\n"
     "export const SixNinePlugin = async () => {\n"
@@ -110,7 +111,7 @@ def _plugin_path() -> Path:
 def install() -> dict:
     plugin_path = _plugin_path()
     plugin_path.parent.mkdir(parents=True, exist_ok=True)
-    plugin_path.write_text(PLUGIN_TEMPLATE)
+    plugin_path.write_text(PLUGIN_TEMPLATE.replace("__CLI_NAME__", repr(command_name())))
     return {"ok": True, "config_path": str(plugin_path)}
 
 

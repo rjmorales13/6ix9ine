@@ -472,7 +472,7 @@ class SixNineApp(App):
             wordmark.update(tui_wordmark.render_collapsed())
         else:
             banner = tui_wordmark.render_banner()
-            banner.append("  ")
+            banner.append("\n")
             banner.append(tui_wordmark.TAGLINE, style=tui_wordmark.TAGLINE_COLOR)
             wordmark.update(banner)
 
@@ -600,7 +600,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[list] = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.kill:
+    return run_dashboard(kill=args.kill)
+
+
+def run_dashboard(*, kill: bool = False) -> int:
+    if kill:
         result = perform_hard_kill()
         print(json.dumps(result, indent=2, default=str))
         return shared.EXIT_OK if result.get("ok") else shared.EXIT_GENERAL_ERROR

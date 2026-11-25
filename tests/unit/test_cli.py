@@ -630,6 +630,17 @@ def test_cmd_uninstall_helper_maps_script_failure_to_permission_denied():
 # --- top-level dispatch ---
 
 
+@pytest.mark.parametrize("argv", [[], ["dashboard"]])
+def test_main_opens_dashboard(argv, monkeypatch):
+    import tui
+
+    calls = []
+    monkeypatch.setattr(tui.SixNineApp, "run", lambda app: calls.append(app))
+
+    assert cli.main(argv) == shared.EXIT_OK
+    assert len(calls) == 1
+
+
 def test_main_version_prints_version_string(capsys):
     exit_code = cli.main(["--version"])
     captured = capsys.readouterr()

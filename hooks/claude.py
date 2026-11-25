@@ -5,6 +5,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from hooks import command_name
+
 AGENT_NAME = "claude"
 CONFIG_DIR = Path.home() / ".claude"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
@@ -54,7 +56,7 @@ def _cli_path() -> str:
     the frozen binary itself if we're running frozen but not yet on PATH, then
     the source-install fallback.
     """
-    resolved = shutil.which("6ix9ine")
+    resolved = shutil.which(command_name())
     if resolved:
         return resolved
     if getattr(sys, "frozen", False):

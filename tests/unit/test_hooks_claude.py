@@ -75,6 +75,14 @@ def test_install_resolves_cli_path_via_which(monkeypatch, tmp_path):
     assert prompt_hook["command"] == "/opt/homebrew/bin/6ix9ine"
 
 
+def test_frozen_staywoke_hook_resolves_the_new_command(monkeypatch):
+    monkeypatch.setattr(claude.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(claude.sys, "executable", "/build/staywoke")
+    monkeypatch.setattr(claude.shutil, "which", lambda name: f"/opt/homebrew/bin/{name}")
+
+    assert claude._cli_path() == "/opt/homebrew/bin/staywoke"
+
+
 def test_install_is_idempotent(monkeypatch, tmp_path):
     config_dir, settings_file = _point_at(monkeypatch, tmp_path)
     config_dir.mkdir()

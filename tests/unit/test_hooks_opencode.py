@@ -64,6 +64,16 @@ def test_install_does_not_hardcode_a_home_directory_path(monkeypatch, tmp_path):
     assert "const CLI = '6ix9ine'" in content
 
 
+def test_install_updates_existing_plugin_to_use_staywoke(monkeypatch, tmp_path):
+    project_dir, _ = _point_at(monkeypatch, tmp_path)
+    project_dir.mkdir(parents=True)
+    old_path = opencode.install()["config_path"]
+
+    monkeypatch.setattr(opencode, "command_name", lambda: "staywoke")
+    assert opencode.install()["config_path"] == old_path
+    assert "const CLI = 'staywoke'" in Path(old_path).read_text()
+
+
 def test_install_uses_execfile_form_not_shell_interpolation(monkeypatch, tmp_path):
     # Regression test: the old template used execSync with a template-literal
     # shell command (`${CLI} acquire ${input.sessionID} ...`), which both

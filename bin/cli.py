@@ -52,9 +52,12 @@ def default_agent_modules() -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="6ix9ine")
+    parser = argparse.ArgumentParser(prog="staywoke")
     parser.add_argument("--version", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
+
+    dashboard = subparsers.add_parser("dashboard", help="open the interactive dashboard")
+    dashboard.add_argument("--kill", action="store_true", help="clear active sessions and holds, and unblock sleep")
 
     acquire = subparsers.add_parser("acquire")
     acquire.add_argument("session_key")
@@ -753,6 +756,11 @@ def main(argv: Optional[list] = None) -> int:
     if args.version:
         print(shared.version_string())
         return shared.EXIT_OK
+
+    if args.command is None or args.command == "dashboard":
+        from tui import run_dashboard
+
+        return run_dashboard(kill=getattr(args, "kill", False))
 
     # Hook entrypoints bypass the normal print-JSON dispatch entirely: they must
     # emit NOTHING on stdout and ALWAYS return 0 (see cmd_hook_acquire).

@@ -363,7 +363,7 @@ def test_app_collapses_wordmark_on_short_terminal(monkeypatch):
             wordmark = app.query_one("#wordmark")
             plain = plain_of(wordmark)
             assert "\n" not in plain
-            assert "6ix9ine" in plain
+            assert "Stay Woke" in plain
 
     asyncio.run(go())
 
