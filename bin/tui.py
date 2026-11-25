@@ -471,10 +471,7 @@ class SixNineApp(App):
         if tui_wordmark.should_collapse(self.size.height):
             wordmark.update(tui_wordmark.render_collapsed())
         else:
-            banner = tui_wordmark.render_banner()
-            banner.append("\n")
-            banner.append(tui_wordmark.TAGLINE, style=tui_wordmark.TAGLINE_COLOR)
-            wordmark.update(banner)
+            wordmark.update(tui_wordmark.render_header(self.size.height, self.size.width))
 
     def on_resize(self, event: events.Resize) -> None:
         self._render_wordmark()
