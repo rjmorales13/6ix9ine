@@ -11,28 +11,21 @@ WOKE_COLOR = "#6f5a88"
 TAGLINE_COLOR = "#565e68"
 TAGLINE = "— keeps your Mac awake while agents work"
 COLLAPSE_HEIGHT = 30
-MIN_PENGUIN_HEIGHT = 34
-MIN_PENGUIN_WIDTH = 70
-HEADER_PADDING = 2
-
 PENGUIN = (
-    ".....DDDDDD.....",
-    "...DDDDDDDDDD...",
-    "..DDFFDDDDFFDD..",
-    "..DFFHFFFFHFFD..",
-    "..DFFKFFFFKFFD..",
-    "..DFFFFOFFFFFD..",
-    "...DFFFOFFFD....",
-    "...DTTTTTTTD....",
-    "..DTTtttTTtDD...",
-    ".DDDFFFFFTtDDD..",
-    ".DDFFFFFFFtDDD..",
-    ".DOFFFFFFFttOD..",
-    "..DDFFFFFFDD....",
-    "...DDFFFFDD.....",
-    "...OODDDDOO.....",
-    "..OOOO..OOOO....",
+    "...DDDDDD...",
+    "..DFFFFFFD..",
+    ".DFFHFFHFFD.",
+    ".DFFKFFKFFD.",
+    ".DFFFOOFFFD.",
+    "..DFFOOFFD..",
+    "..DTTTTTTD..",
+    ".DDFFFFTtDD.",
+    "ODFFFFFTtFDO",
+    ".DFFFFFTtFD.",
+    "..DDFFFFDD..",
+    "..OOO..OOO..",
 )
+PENGUIN_HEIGHT = len(PENGUIN) // 2
 PENGUIN_COLORS = {
     "D": "#404650",
     "F": "#fff3d9",
@@ -77,35 +70,21 @@ def render_banner() -> Text:
     return banner
 
 
-def render_header(terminal_height: int, terminal_width: int) -> Text:
-    header = render_banner()
-    header.append("\n")
-    header.append(TAGLINE, style=TAGLINE_COLOR)
-    if terminal_height < MIN_PENGUIN_HEIGHT or terminal_width < MIN_PENGUIN_WIDTH:
-        return header
-
-    title = header.split()
-    header = Text()
-    penguin_column = terminal_width - HEADER_PADDING - len(PENGUIN[0])
-
+def render_penguin() -> Text:
+    penguin = Text()
     for row, (top, bottom) in enumerate(zip(PENGUIN[::2], PENGUIN[1::2])):
         if row:
-            header.append("\n")
-        title_line = title[row] if row < len(title) else Text()
-        header.append_text(title_line)
-        header.append(" " * (penguin_column - title_line.cell_len))
-
+            penguin.append("\n")
         for upper, lower in zip(top, bottom):
             foreground = PENGUIN_COLORS.get(upper)
             background = PENGUIN_COLORS.get(lower)
             if foreground:
-                header.append("▀", style=Style(color=foreground, bgcolor=background))
+                penguin.append("▀", style=Style(color=foreground, bgcolor=background))
             elif background:
-                header.append("▄", style=Style(color=background))
+                penguin.append("▄", style=Style(color=background))
             else:
-                header.append(" ")
-
-    return header
+                penguin.append(" ")
+    return penguin
 
 
 def render_collapsed() -> Text:

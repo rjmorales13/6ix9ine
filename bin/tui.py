@@ -13,7 +13,7 @@ import psutil
 from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Static
 from textual.widgets.data_table import CellDoesNotExist
 
@@ -32,6 +32,7 @@ IPC_ERRORS = (OSError, ipc.ProtocolError)
 REASON_STYLE = "#aab2bd"
 HOLD_HELD_STYLE = "#8b93a0"
 WATCHING_LINE = "watching: 🤖 claude · 🧰 opencode · ⌘ codex"
+BOTTOM_PANEL_HEIGHT = 11
 
 
 # --------------------------------------------------------------------------
@@ -381,18 +382,24 @@ class SixNineApp(App):
         height: 1fr;
         margin: 1 1 0 1;
     }}
-    #bottom {{ height: 11; margin: 1 1 0 1; }}
+    #bottom {{ height: {BOTTOM_PANEL_HEIGHT}; margin: 1 1 0 1; }}
     #inspector {{
         border: solid {tui_theme.BORDER};
         border-title-color: #8b93a0;
         width: 3fr;
         padding: 0 1;
     }}
-    #auxiliary {{
+    #auxiliary-pane {{
         border: solid {tui_theme.BORDER_QUIET};
         border-title-color: {tui_theme.TEXT_DIM};
         width: 2fr;
         margin-left: 1;
+    }}
+    #auxiliary {{ height: 1fr; }}
+    #auxiliary-penguin {{
+        height: {tui_wordmark.PENGUIN_HEIGHT};
+        text-align: center;
+        display: none;
     }}
     DataTable {{ background: {tui_theme.BACKGROUND}; }}
     DataTable > .datatable--header {{
@@ -449,7 +456,9 @@ class SixNineApp(App):
         yield DataTable(id="monitor")
         with Horizontal(id="bottom"):
             yield Static(id="inspector")
-            yield DataTable(id="auxiliary")
+            with Vertical(id="auxiliary-pane"):
+                yield DataTable(id="auxiliary")
+                yield Static(tui_wordmark.render_penguin(), id="auxiliary-penguin")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -459,7 +468,7 @@ class SixNineApp(App):
         aux = self.query_one("#auxiliary", DataTable)
         aux.add_columns("PROCESS", "PID", "STATUS", "CPU", "MEM")
         aux.cursor_type = "row"
-        aux.border_title = "module dash · auxiliary background processes running"
+        self.query_one("#auxiliary-pane").border_title = "module dash · auxiliary background processes running"
         self._render_wordmark()
         self.set_interval(self._refresh_interval, self.refresh_data)
         self.refresh_data()
@@ -471,10 +480,21 @@ class SixNineApp(App):
         if tui_wordmark.should_collapse(self.size.height):
             wordmark.update(tui_wordmark.render_collapsed())
         else:
-            wordmark.update(tui_wordmark.render_header(self.size.height, self.size.width))
+            banner = tui_wordmark.render_banner()
+            banner.append("\n")
+            banner.append(tui_wordmark.TAGLINE, style=tui_wordmark.TAGLINE_COLOR)
+            wordmark.update(banner)
 
     def on_resize(self, event: events.Resize) -> None:
         self._render_wordmark()
+        self._update_penguin()
+
+    def _update_penguin(self) -> None:
+        aux = self.query_one("#auxiliary", DataTable)
+        penguin = self.query_one("#auxiliary-penguin", Static)
+        # Leave room for the table header, both borders, and a horizontal scrollbar.
+        available_rows = BOTTOM_PANEL_HEIGHT - 4 - tui_wordmark.PENGUIN_HEIGHT
+        penguin.display = self.size.width >= 60 and aux.row_count <= available_rows
 
     # ------------------------------------------------------------ refresh
 
@@ -521,6 +541,7 @@ class SixNineApp(App):
             # DataTable raises DuplicateKey on repeated row keys.
             aux.add_row(*styled_aux_cells(row), key=f"{row[0]}#{row[1]}")
 
+        self._update_penguin()
         self._update_inspector(monitor)
 
     def _cursor_key(self, table: DataTable) -> Optional[str]:
