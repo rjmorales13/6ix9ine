@@ -7,7 +7,7 @@
 ## Option 1: Homebrew (Recommended)
 
 ```sh
-brew install rjmorales13/6ix9ine/staywoke
+brew install rjmorales13/staywoke/staywoke
 staywoke setup-privileged-helper
 staywoke daemon-start
 staywoke install-hooks --all
@@ -17,24 +17,47 @@ staywoke dashboard
 ### Upgrading from 6ix9ine
 
 Wait for active tasks to finish before restarting the background services.
-Run these commands after the Stay Woke formula is published in the existing
-`rjmorales13/6ix9ine` tap:
+The [Homebrew installer](../scripts/install-staywoke-homebrew.sh) handles both
+the original `6ix9ine` formula and `staywoke` on the old tap. Run it from a
+checkout of this repository:
 
 ```sh
+bash scripts/install-staywoke-homebrew.sh
+```
+
+To update manually, add and trust the new tap's formula before updating:
+
+```sh
+brew tap rjmorales13/staywoke
+brew trust --formula rjmorales13/staywoke/staywoke
 brew update
-brew migrate --formula 6ix9ine
-brew upgrade rjmorales13/6ix9ine/staywoke
+```
+
+If the original `6ix9ine` formula is still installed, run:
+
+```sh
+brew migrate --formula rjmorales13/6ix9ine/6ix9ine
+brew upgrade rjmorales13/staywoke/staywoke
+```
+
+If you already had `staywoke` and Homebrew still reports it as installed from
+`rjmorales13/6ix9ine`, run `brew reinstall rjmorales13/staywoke/staywoke` to
+move the installed package to the new tap. Omit `brew trust` on older Homebrew
+versions that lack that command.
+
+After a package upgrade, run:
+
+```sh
 staywoke setup-privileged-helper
 staywoke daemon-restart
 staywoke install-hooks --all
 staywoke status
 ```
 
-If Homebrew already migrated the formula during an earlier upgrade, skip
-`brew migrate`. Run the helper setup as your normal user and enter your Mac
-password when prompted. Reinstalling hooks updates the managed Claude Code
-and OpenCode hooks. Update your own aliases, scripts, and launchers to call
-`staywoke` or `staywoke dashboard`.
+Run the helper setup as your normal user and enter your Mac password when
+prompted. Reinstalling hooks updates the managed Claude Code and OpenCode
+hooks. Update your own aliases, scripts, and launchers to call `staywoke` or
+`staywoke dashboard`.
 
 The upgrade reuses the existing launchd labels, sockets, and Application Support
 directory. An existing `SIXNINE_STATE_DIR` override remains supported. If you
@@ -44,7 +67,7 @@ use it, export it before restarting the daemon.
 
 The release workflow builds and smoke-tests both macOS architectures for PRs,
 manual runs, and release tags. A pushed version tag publishes the verified
-archives and checksum files. Update the separate `homebrew-6ix9ine` tap PR
+archives and checksum files. Update the separate `homebrew-staywoke` tap PR
 with the published archive URLs and matching SHA-256 checksums. The application
 workflow does not write to the tap.
 
