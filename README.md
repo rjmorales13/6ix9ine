@@ -1,5 +1,7 @@
 # Stay Woke
 
+<img src="docs/staywoke-mountain-penguin.png" alt="Pixel-art penguin walking across blue snow toward mountains at sunrise" width="810">
+
 > **Sleep management for AI agents.**
 > Keep your Mac awake while agents work and let it sleep when they finish.
 
@@ -323,7 +325,7 @@ What's under the hood, by the numbers:
 | [INSTALL.md](docs/INSTALL.md) | Installation options and setup steps |
 | [HOOKS.md](docs/HOOKS.md) | Agent hook integration guide |
 | [API.md](docs/API.md) | CLI reference and status output |
-| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | How to add support for new agents |
+| [Contributing to Stay Woke](docs/CONTRIBUTING.md) | How to add support for new agents |
 | [TROUBLESHOOTING-HOOKS.md](docs/TROUBLESHOOTING-HOOKS.md) | Hook integration bugs found/fixed, and a verification checklist |
 | [status-view-spec.md](docs/dashboard-status-view/status-view-spec.md) | Final TUI dashboard mock and visual rules |
 

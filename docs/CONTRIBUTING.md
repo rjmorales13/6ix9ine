@@ -1,4 +1,4 @@
-# Contributing to 6ix9ine
+# Contributing to Stay Woke
 
 Thank you for considering contributing! This guide covers how to add support for new agents, improve the core system, and submit changes.
 
@@ -82,11 +82,11 @@ def install() -> dict:
     # Add hooks
     config["hooks"] = config.get("hooks", {})
     config["hooks"]["beforeTask"] = {
-        "command": "6ix9ine acquire",
+        "command": "staywoke acquire",
         "args": ["{session_id}", "--tool", AGENT_NAME, "--reason", "{task_description}"]
     }
     config["hooks"]["afterTask"] = {
-        "command": "6ix9ine release",
+        "command": "staywoke release",
         "args": ["{session_id}"]
     }
     
@@ -158,17 +158,17 @@ AGENT_PROCESS_MAP = {
 
 ```bash
 # Install hooks for your new agent
-6ix9ine install-hooks --agent newagent
+staywoke install-hooks --agent newagent
 
 # Verify
-6ix9ine status
+staywoke status
 
 # Run the agent and confirm sessions appear
 # Confirm sleep blocks when agent is working
 # Confirm sleep resumes when agent is idle
 
 # Uninstall hooks
-6ix9ine uninstall-hooks --agent newagent
+staywoke uninstall-hooks --agent newagent
 ```
 
 ### Step 7: Update Documentation
@@ -182,8 +182,8 @@ AGENT_PROCESS_MAP = {
 ## Development Setup
 
 ```bash
-git clone https://github.com/rjmorales13/6ix9ine.git
-cd 6ix9ine
+git clone https://github.com/rjmorales13/staywoke.git
+cd staywoke
 
 # Create virtual environment
 python3 -m venv venv
@@ -240,10 +240,10 @@ Before submitting a PR for a new agent:
 - [ ] Agent acquires session on task start
 - [ ] Agent releases session on task end
 - [ ] Overlapping sessions refcount correctly
-- [ ] `6ix9ine status` shows the session
+- [ ] `staywoke status` shows the session
 - [ ] Sleep is blocked while session is active
 - [ ] Sleep resumes when last session releases
-- [ ] `t69 --kill` restores normal sleep
+- [ ] `staywoke dashboard --kill` restores normal sleep
 - [ ] Hook uninstaller restores original config
 - [ ] Process sniffing fallback works (if applicable)
 
@@ -257,7 +257,7 @@ Before submitting a PR for a new agent:
 4. Update documentation
 5. Submit a PR with:
    - Description of the agent's hook system
-   - Screenshots of `6ix9ine status` showing it working
+   - Screenshots of `staywoke status` showing it working
    - Confirmation of manual test checklist
 
 ---
