@@ -43,7 +43,7 @@ You start it. You stop it. Forget it running and your laptop stays awake till mo
 | Multiple concurrent sessions | ❌ | ❌ | ✅ reference-counted |
 | Crash-safe (no leaked wake locks) | ❌ | ❌ | ✅ |
 | Docked clamshell (lid closed) | ❌ | ⚠️ partial | ✅ |
-| Live terminal dashboard | ❌ | ❌ | ✅ `t69` |
+| Live terminal dashboard | ❌ | ❌ | ✅ `staywoke` |
 | Free + fully auditable | ✅ | ❌ closed-source | ✅ MIT |
 
 ## Who it's for
@@ -137,14 +137,7 @@ Here's what you'll see race by:
   ⚙  Installing Python dependencies
   ✓  dependencies installed
 
-  ⚙  Copying daemon runtime files
-  ✓  runtime files ready
-
-  ⚙  Installing CLI wrappers → ~/.local/bin
-  ✓  6ix9ine and t69 installed
-
-  ⚙  Generating LaunchAgent plist
-  ✓  LaunchAgent plist generated
+  ⚙  Installing staywoke → ~/.local/bin
 
   ⚙  Setting up privileged helper
   ✓  privileged helper ready
@@ -152,10 +145,10 @@ Here's what you'll see race by:
   ⚙  Installing agent hooks
   ✓  hooks configured
 
-  ⚙  Starting background daemon
+  ⚙  Restarting background daemon
   ✓  daemon running
 
-  ✓  6ix9ine installed and running 🚀
+  ✓  Stay Woke installed and running
 ```
 
 When the script finishes, your install terminal closes and **a new Terminal window pops up** with the live dashboard — running, connected, already watching your agents. 🎬
@@ -165,7 +158,7 @@ Close that window whenever you want. The daemon doesn't care — it's a LaunchAg
 Want the dashboard back? Any terminal, any time:
 
 ```bash
-t69
+staywoke
 ```
 
 **That's the whole loop.** Install once. Close and reopen as you please. Never think about it again.
@@ -174,17 +167,17 @@ t69
 
 `./install.sh` handles all of this automatically; the Homebrew path above needs the three setup commands run once by hand. You only need the rest of these if you're doing a custom setup:
 
-- `6ix9ine setup-privileged-helper` — installs the root LaunchDaemon
+- `staywoke setup-privileged-helper` — installs the root LaunchDaemon
 
-- `6ix9ine install-hooks --all` — sets up agent lifecycle hooks
+- `staywoke install-hooks --all` — sets up agent lifecycle hooks
 
-- `6ix9ine daemon-start` — starts the background daemon
+- `staywoke daemon-start` — starts the background daemon
 
 ---
 
 ## Dashboard
 
-**See everything at a glance.** The `t69` dashboard is your live terminal control surface for monitoring and managing active work — every session, who holds it, for how long, and whether sleep is currently blocked.
+**See everything at a glance.** The `staywoke` dashboard is your live terminal control surface for monitoring and managing active work — every session, who holds it, for how long, and whether sleep is currently blocked.
 
 ![6ix9ine dashboard — collapsed header](docs/dashboard-collapsed.svg)
 
@@ -226,7 +219,7 @@ Lid-close and lid-open events are monitored by the daemon, and a lid-open summar
 
 ### 👁️ Live dashboard with real-time visibility
 
-The `t69` dashboard shows you everything at a glance: active sessions, held durations, which agent is holding what, sleep state, lid position, and thermal readings. Each session has a stable color identity and a held-time tier (green → orange → red → 🔥).
+The `staywoke` dashboard shows you everything at a glance: active sessions, held durations, which agent is holding what, sleep state, lid position, and thermal readings. Each session has a stable color identity and a held-time tier (green → orange → red → 🔥).
 
 The module dash monitors auxiliary processes like Ollama and Docker in quiet gray, filterable with keybindings. The split inspector lets you drill into any session for full detail — agent, UUID, PID, reason, and more.
 
@@ -268,7 +261,7 @@ Agent lifecycle hooks fire session-start and session-end events whenever your to
 
 - Codex CLI and Antigravity CLI (`agy`) are being researched — their integration points aren't fully mapped yet, but the hook architecture is ready
 
-- If you don't use agents with hooks, you can still use `6ix9ine acquire` and `6ix9ine release` manually in any script or shell
+- If you don't use agents with hooks, you can still use `staywoke acquire` and `staywoke release` manually in any script or shell
 
 The hooks are small, targeted, and do nothing except tell the daemon "something started" or "something stopped."
 
