@@ -61,8 +61,8 @@ cli="$prefix/bin/staywoke"
 "$cli" daemon-restart
 
 # These are the supported lifecycle hooks. A missing agent is normal.
-for agent in claude opencode; do
-    if "$cli" install-hooks --agent "$agent"; then
+for agent in claude opencode codex; do
+    if PATH="$prefix/bin:$PATH" "$cli" install-hooks --agent "$agent"; then
         continue
     else
         result=$?
