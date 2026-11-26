@@ -74,10 +74,10 @@ Built for people running long, hands-off work on a Mac:
 ### 🍺 Homebrew (recommended)
 
 ```bash
-brew install rjmorales13/6ix9ine/staywoke
+brew install rjmorales13/staywoke/staywoke
 ```
 
-Real Homebrew, real binaries — `brew upgrade` and `brew uninstall` just work like any other formula. This auto-taps `rjmorales13/homebrew-6ix9ine` and installs in one shot.
+Real Homebrew, real binaries — `brew upgrade` and `brew uninstall` just work like any other formula. This auto-taps `rjmorales13/homebrew-staywoke` and installs in one shot.
 
 > Distributed via our own tap, not the official [formulae.brew.sh](https://formulae.brew.sh) index (`homebrew-core`). That's a genuine, first-class Homebrew install either way — it's just not yet *searchable* on brew.sh. Submitting to `homebrew-core` is a goal for once 6ix9ine has wider adoption, not a blocker to installing today.
 

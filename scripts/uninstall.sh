@@ -73,17 +73,19 @@ fi
 # `brew list --formula` dump for an exact-line match — a direct query's exit
 # code is the same signal `brew uninstall`/`brew untap` use internally, so it
 # can't disagree with them the way a separately-parsed list can.
-for formula in staywoke 6ix9ine; do
-    if brew list --formula "rjmorales13/6ix9ine/$formula" &>/dev/null; then
+for formula in rjmorales13/staywoke/staywoke rjmorales13/6ix9ine/staywoke rjmorales13/6ix9ine/6ix9ine; do
+    if brew list --formula --full-name 2>/dev/null | grep -Fx "$formula" >/dev/null; then
         log "Uninstalling $formula from the Homebrew tap..."
-        brew uninstall "rjmorales13/6ix9ine/$formula" || fail "brew uninstall failed for $formula"
+        brew uninstall "$formula" || fail "brew uninstall failed for $formula"
     fi
 done
 
-if brew tap 2>/dev/null | grep -qx "rjmorales13/6ix9ine"; then
-    log "Removing the rjmorales13/6ix9ine tap..."
-    brew untap rjmorales13/6ix9ine || fail "brew untap failed"
-fi
+for tap in rjmorales13/staywoke rjmorales13/6ix9ine; do
+    if brew tap 2>/dev/null | grep -Fx "$tap" >/dev/null; then
+        log "Removing the $tap tap..."
+        brew untap "$tap" || fail "brew untap failed for $tap"
+    fi
+done
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_BIN="$HOME/.local/bin/staywoke"
