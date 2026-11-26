@@ -1,5 +1,7 @@
 # Stay Woke
 
+![Pixel-art penguin walking across blue snow toward mountains at sunrise](docs/staywoke-mountain-penguin.png)
+
 > **Sleep management for AI agents.**
 > Keep your Mac awake while agents work and let it sleep when they finish.
 
