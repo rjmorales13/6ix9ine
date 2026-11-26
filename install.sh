@@ -103,7 +103,7 @@ HOOK_OUTPUT="$("$BIN_DIR/staywoke" install-hooks --all)" || true
 printf '%s\n' "$HOOK_OUTPUT" | "$PYTHON313" -c '
 import json, sys
 failed = json.load(sys.stdin).get("failed", {})
-for agent in ("claude", "opencode"):
+for agent in ("claude", "opencode", "codex"):
     if agent in failed:
         sys.exit(f"{agent} hook setup failed: {failed[agent]}")
 '
@@ -117,7 +117,7 @@ import sys, json
 d = json.load(sys.stdin)
 for k, v in d.get('failed', {}).items():
     # shorten the pending-research message
-    print(k.replace('codex', 'Codex CLI').replace('antigravity', 'Antigravity CLI'))
+    print(k.replace('antigravity', 'Antigravity CLI'))
 " 2>/dev/null || true)"
 if [ -n "$FAILED_ITEMS" ]; then
   while IFS= read -r line; do

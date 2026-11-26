@@ -190,57 +190,31 @@ export const SixNinePlugin = async () => {
 
 ---
 
-## 🔄 Codex CLI
+## Codex CLI
 
-**Status:** Hook integration **pending research**. This section documents what we need to determine.
+Run `staywoke install-hooks --agent codex`, then open Codex and review and
+trust the Stay Woke commands with `/hooks`. The source and Homebrew setup
+scripts also register hooks when they detect Codex. Use a recent Codex CLI
+that supports command hooks and the events below.
 
-### What We Need to Know
+Stay Woke adds its commands to `$CODEX_HOME/hooks.json` (default
+`~/.codex/hooks.json`). Existing hooks and settings are preserved. Run
+`staywoke uninstall-hooks --agent codex` to remove Stay Woke's entries.
 
-Before implementing Codex CLI hooks, we need to answer:
+- `PreModelRequest` acquires or refreshes a sleep hold before a main-thread
+  model request, after the prompt passes submission hooks.
+- `Stop` releases the hold when the turn completes.
+- `PostModelRequest` releases the hold if a main-thread request fails or is
+  cancelled. A retry acquires it again before the next attempt.
+- `Interrupt` and `SessionEnd` also attempt to release the hold on cancellation
+  or normal shutdown. Codex limits these cleanup hooks to three seconds.
 
-1. **Does Codex CLI read a configuration directory?**
-   - Check for `~/.codex/`, `~/.codexrc`, or `~/.config/codex/`
-   - What files exist in these directories?
+Stay Woke uses Codex's session ID to match the two events and displays
+`codex turn` in the dashboard. Prompt text stays out of Stay Woke's status.
+If Codex exits without delivering cleanup, Stay Woke's session age limit
+still applies.
 
-2. **Does Codex CLI support lifecycle hooks?**
-   - Can we inject pre/post commands via config?
-   - Does it support environment variables like `CODEX_PRE_COMMAND`?
-   - Does it have a plugin system?
-
-3. **Does Codex CLI support MCP (Model Context Protocol)?**
-   - If yes, we can provide an MCP tool: `6ix9ine_mcp_acquire` / `6ix9ine_mcp_release`
-   - This would be the preferred integration method
-
-4. **What is the exact process name?**
-   - Is it `codex`, `codex-cli`, or something else?
-   - This affects process sniffing in `daemon.py`
-
-### Research Tasks
-
-```bash
-# Run these commands and report findings:
-ls -la ~/.codex/
-ls -la ~/.config/codex/
-codex --help
-codex --version
-cat ~/.codex/config.json 2>/dev/null || echo "No config found"
-```
-
-### Fallback: Process Sniffing
-
-If Codex CLI does not support hooks, `daemon.py` can use **process sniffing** as a fallback:
-
-```python
-# In daemon.py process watcher
-CODEX_BINARIES = ["codex", "codex-cli"]
-
-for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-    if proc.info['name'] in CODEX_BINARIES:
-        # Auto-acquire if not already tracked
-        auto_acquire(proc.info['pid'], "codex")
-```
-
-This is less precise than hooks (can't distinguish idle vs. active) but works without agent cooperation.
+[Codex hook documentation](https://developers.openai.com/codex/hooks)
 
 ---
 
@@ -339,8 +313,8 @@ The `6ix9ine install-hooks` command should:
        return os.path.exists(os.path.expanduser("~/.opencode")) or               os.path.exists(os.path.expanduser("~/.config/opencode"))
 
    def detect_codex():
-       # TODO: Implement after research
-       return os.path.exists(os.path.expanduser("~/.codex"))  # placeholder
+       config = os.environ.get("CODEX_HOME") or "~/.codex"
+       return os.path.isdir(os.path.expanduser(config)) or shutil.which("codex") is not None
 
    def detect_antigravity():
        # TODO: Implement after research

@@ -50,11 +50,11 @@ Stay Woke follows your work automatically: agents call `acquire` when they start
 
 Built for people running long, hands-off work on a Mac:
 
-- ✅ **Claude Code** and **OpenCode** — auto-detected via hooks, zero config
+- ✅ **Claude Code**, **OpenCode**, and **Codex CLI** — automatically configured by the hook installer
 - ✅ Overnight AI coding, model training, or batch jobs
 - ✅ Long Docker builds, data pipelines, render jobs — anything, via manual `acquire`/`release`
 - ✅ Docked MacBooks running with the lid closed
-- 🔄 Codex CLI and Antigravity (`agy`) — hook integration in progress
+- 🔄 Antigravity (`agy`) — hook integration in progress
 
 ---
 
@@ -241,7 +241,7 @@ Communication happens over Unix sockets with peer-UID authentication. The Launch
 |---|---|---|
 | Claude Code | ✅ **Live** 🔥 | Hook integration confirmed working end-to-end |
 | OpenCode | ✅ **Live** 🔥 | Hook integration via TypeScript plugin |
-| Codex CLI | 🔄 In progress | Hook integration pending research — see [HOOKS.md](docs/HOOKS.md) |
+| Codex CLI | ✅ Supported | Review and trust Stay Woke hooks with `/hooks` in Codex |
 | Antigravity CLI (`agy`) | 🔄 In progress | Hook integration pending research |
 | Manual (`acquire`/`release`) | ✅ **Live** 🔥 | Ad-hoc acquire/release for any tool or script |
 | Process-sniffing fallback | 🗓️ Coming soon | Auto-detect agents without hooks |
@@ -259,7 +259,7 @@ Agent lifecycle hooks fire session-start and session-end events whenever your to
 
 - Claude Code and OpenCode have fully confirmed hook integrations — they fire a `staywoke` command when a session starts and again when it ends
 
-- Codex CLI and Antigravity CLI (`agy`) are being researched — their integration points aren't fully mapped yet, but the hook architecture is ready
+- Codex CLI hooks keep the Mac awake during turns. Review and trust them in Codex with `/hooks`. See the [Codex hook setup](docs/HOOKS.md#codex-cli).
 
 - If you don't use agents with hooks, you can still use `staywoke acquire` and `staywoke release` manually in any script or shell
 

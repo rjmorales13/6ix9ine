@@ -55,8 +55,8 @@ staywoke status
 ```
 
 Run the helper setup as your normal user and enter your Mac password when
-prompted. Reinstalling hooks updates the managed Claude Code and OpenCode
-hooks. Update your own aliases, scripts, and launchers to call `staywoke` or
+prompted. Reinstalling hooks updates the managed Claude Code, OpenCode, and
+Codex CLI hooks. Review new or changed Codex hooks with `/hooks` in Codex. Update your own aliases, scripts, and launchers to call `staywoke` or
 `staywoke dashboard`.
 
 The upgrade reuses the existing launchd labels, sockets, and Application Support

@@ -107,10 +107,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("daemon-restart")
     subparsers.add_parser("daemon-status")
 
-    # Claude Code hook entrypoints. These read the hook payload as JSON on
-    # stdin, ALWAYS exit 0, and print NOTHING (handled specially in main()).
-    subparsers.add_parser("hook-acquire")
-    subparsers.add_parser("hook-release")
+    for command in ("hook-acquire", "hook-release"):
+        hook = subparsers.add_parser(command)
+        hook.add_argument("--tool", choices=("claude", "codex"), default="claude")
 
     return parser
 
@@ -163,18 +162,10 @@ def cmd_track(args, send_request: Deps = None) -> tuple[dict, int]:
     return response, (shared.EXIT_OK if response.get("ok") else shared.EXIT_GENERAL_ERROR)
 
 
-# --- Claude Code hook entrypoints ---
+# --- Agent hook entrypoints ---
 #
-# These are invoked by Claude Code as `6ix9ine hook-acquire` / `hook-release`
-# with the hook payload delivered as JSON on stdin. They have two hard
-# contracts that the normal CLI commands do NOT:
-#   1. ALWAYS exit 0. UserPromptSubmit/Stop treat a non-zero exit as a blocking
-#      error (erasing the prompt / refusing to let Claude stop). A failure of
-#      6ix9ine itself must never break the user's actual Claude Code session.
-#   2. Print NOTHING to stdout. Claude Code injects a UserPromptSubmit hook's
-#      stdout into the prompt context, so any normal CLI JSON output would
-#      corrupt every prompt. main() dispatches these BEFORE its print path.
-
+# Read JSON on stdin and fail open if the daemon is unavailable. Claude
+# expects silence, while Codex Stop expects a neutral JSON response.
 
 def _hook_send_request(send_request: Deps) -> Callable:
     # Keep the prompt hot path snappy: bound the daemon round-trip at 3s.
@@ -182,13 +173,16 @@ def _hook_send_request(send_request: Deps) -> Callable:
 
 
 def cmd_hook_acquire(args, send_request: Deps = None) -> int:
-    """UserPromptSubmit hook: acquire the session, then exit 0 silently."""
+    """Acquire the session for an active turn and exit silently."""
+    tool = getattr(args, "tool", "claude")
     try:
         data = json.load(sys.stdin)
+        if tool == "codex" and (data.get("agent_id") or data.get("agent_type")):
+            return shared.EXIT_OK
         session_id = data.get("session_id") or ""
-        reason = (data.get("prompt") or "")[:80]
-        if session_id:
-            ns = argparse.Namespace(session_key=session_id, tool="claude", reason=reason)
+        reason = "codex turn" if tool == "codex" else (data.get("prompt") or "")[:80]
+        if isinstance(session_id, str) and session_id:
+            ns = argparse.Namespace(session_key=session_id, tool=tool, reason=reason)
             cmd_acquire(ns, send_request=_hook_send_request(send_request))
     except Exception:
         pass
@@ -196,15 +190,24 @@ def cmd_hook_acquire(args, send_request: Deps = None) -> int:
 
 
 def cmd_hook_release(args, send_request: Deps = None) -> int:
-    """Stop hook: release the session, then exit 0 silently."""
+    """Release the session and return a neutral response to Codex."""
+    tool = getattr(args, "tool", "claude")
     try:
         data = json.load(sys.stdin)
         session_id = data.get("session_id") or ""
-        if session_id:
+        should_release = True
+        if tool == "codex" and data.get("hook_event_name") == "PostModelRequest":
+            should_release = (
+                data.get("status") in ("failed", "cancelled")
+                and not (data.get("agent_id") or data.get("agent_type"))
+            )
+        if should_release and isinstance(session_id, str) and session_id:
             ns = argparse.Namespace(session_key=session_id, all=False)
             cmd_release(ns, send_request=_hook_send_request(send_request))
     except Exception:
         pass
+    if tool == "codex":
+        print("{}")
     return shared.EXIT_OK
 
 
@@ -751,8 +754,7 @@ def main(argv: Optional[list] = None) -> int:
 
         return run_dashboard(kill=getattr(args, "kill", False))
 
-    # Hook entrypoints bypass the normal print-JSON dispatch entirely: they must
-    # emit NOTHING on stdout and ALWAYS return 0 (see cmd_hook_acquire).
+    # Hook entrypoints return the agent-specific response directly.
     if args.command == "hook-acquire":
         return cmd_hook_acquire(args)
     if args.command == "hook-release":
