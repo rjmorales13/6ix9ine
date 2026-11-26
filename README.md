@@ -1,6 +1,6 @@
 # Stay Woke
 
-![Pixel-art penguin walking across blue snow toward mountains at sunrise](docs/staywoke-mountain-penguin.png)
+<img src="docs/staywoke-mountain-penguin.png" alt="Pixel-art penguin walking across blue snow toward mountains at sunrise" width="810">
 
 > **Sleep management for AI agents.**
 > Keep your Mac awake while agents work and let it sleep when they finish.
