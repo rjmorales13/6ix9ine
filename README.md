@@ -1,13 +1,11 @@
 # Stay Woke
 
 > **Sleep management for AI agents.**
-> The snitch that rats on sleep 🐀 — keeps your Mac awake only while work is happening, then lets it go back to sleep like nothing ever happened.
+> Keep your Mac awake while agents work and let it sleep when they finish.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![macOS 14+ only](https://img.shields.io/badge/macOS-14%2B_only-000000?logo=apple&logoColor=white)](#-requirements)
 [![Install with Homebrew](https://img.shields.io/badge/install-brew-FBB040?logo=homebrew&logoColor=white)](#-homebrew-recommended)
-
-![6ix9ine in action](docs/demo.gif)
 
 *Agent starts → `🚫 SLEEP BLOCKED`. Last agent finishes → `💤 SLEEP AVAILABLE`. No toggles, no cleanup.*
 
@@ -24,7 +22,7 @@ The usual fixes are blunt instruments:
 - `caffeinate` dies with your terminal and doesn't survive a closed lid.
 - "Never sleep" apps keep your Mac awake 24/7 whether it's working or not.
 
-6ix9ine ties wakefulness to **actual work**. Sleep is blocked only while an agent session is running, and released automatically the moment the last one ends. Install once, forget it exists.
+Stay Woke ties wakefulness to **actual work**. Sleep is blocked only while an agent session is running, and released automatically the moment the last one ends. Install once, forget it exists.
 
 ## Why not `caffeinate`?
 
@@ -32,11 +30,11 @@ Because `caffeinate` never knows when you're done.
 
 You start it. You stop it. Forget it running and your laptop stays awake till morning. Forget to start it and your agent run dies at the lid close. And plain `caffeinate` won't block sleep on a docked Mac with the lid shut — that needs `pmset disablesleep`, which needs root.
 
-6ix9ine follows your work automatically: agents call `acquire` when they start and `release` when they finish, a reference counter tracks how many are live, and sleep is blocked only while that count is above zero — clamshell included.
+Stay Woke follows your work automatically: agents call `acquire` when they start and `release` when they finish, a reference counter tracks how many are live, and sleep is blocked only while that count is above zero — clamshell included.
 
 ## How it compares
 
-| | `caffeinate` | Amphetamine | **6ix9ine** |
+| | `caffeinate` | Amphetamine | **Stay Woke** |
 |---|:---:|:---:|:---:|
 | Auto-detects AI agent sessions | ❌ | ❌ | ✅ |
 | Releases sleep when work ends | ❌ | ⚠️ manual/timer | ✅ automatic |
@@ -65,9 +63,9 @@ Built for people running long, hands-off work on a Mac:
 | **Homebrew** (recommended) | macOS 14+ — and nothing else. The binaries are self-contained, so **you do not need Python installed.** |
 | **From source** | macOS 14+ and Python 3.13+ (what `install.sh` looks for). |
 
-> **macOS only, for now.** 6ix9ine is built directly on macOS power management — `pmset disablesleep`, IOKit sleep assertions, LaunchAgents and LaunchDaemons — so there's no Linux or Windows build today.
+> **macOS only, for now.** Stay Woke is built directly on macOS power management — `pmset disablesleep`, IOKit sleep assertions, LaunchAgents and LaunchDaemons — so there's no Linux or Windows build today.
 >
-> Want one? [Open a feature request →](https://github.com/rjmorales13/6ix9ine/issues/new) Whether it gets built comes down to whether people actually ask for it, and right now there's no signal either way. The reference-counting and hook layers are platform-agnostic; it's the sleep-blocking layer that would need a per-OS implementation.
+> Want one? [Open a feature request →](https://github.com/rjmorales13/staywoke/issues/new) Whether it gets built comes down to whether people actually ask for it, and right now there's no signal either way. The reference-counting and hook layers are platform-agnostic; it's the sleep-blocking layer that would need a per-OS implementation.
 
 ## 🚀 Getting Started
 
@@ -79,7 +77,7 @@ brew install rjmorales13/staywoke/staywoke
 
 Real Homebrew, real binaries — `brew upgrade` and `brew uninstall` just work like any other formula. This auto-taps `rjmorales13/homebrew-staywoke` and installs in one shot.
 
-> Distributed via our own tap, not the official [formulae.brew.sh](https://formulae.brew.sh) index (`homebrew-core`). That's a genuine, first-class Homebrew install either way — it's just not yet *searchable* on brew.sh. Submitting to `homebrew-core` is a goal for once 6ix9ine has wider adoption, not a blocker to installing today.
+> Distributed via our own tap, not the official [formulae.brew.sh](https://formulae.brew.sh) index (`homebrew-core`). That's a genuine, first-class Homebrew install either way — it's just not yet *searchable* on brew.sh. Submitting to `homebrew-core` is a goal for once Stay Woke has wider adoption, not a blocker to installing today.
 
 Homebrew can't run privileged setup steps for you automatically, so finish setup with three one-time commands:
 
@@ -129,7 +127,7 @@ Here's what you'll see race by:
   ✓  Python 3.13.4
 
   ⚙  Preparing runtime directory
-  ✓  /Users/you/Library/Application Support/6ix9ine
+  ✓  Application Support directory ready
 
   ⚙  Creating virtualenv
   ✓  virtualenv ready
@@ -179,17 +177,17 @@ staywoke
 
 **See everything at a glance.** The `staywoke` dashboard is your live terminal control surface for monitoring and managing active work — every session, who holds it, for how long, and whether sleep is currently blocked.
 
-![6ix9ine dashboard — collapsed header](docs/dashboard-collapsed.svg)
+![Stay Woke dashboard — collapsed header](docs/dashboard-collapsed.svg)
 
 *Collapsed view (80×22): header shrinks to one line, everything still fits.*
 
-![6ix9ine dashboard — idle state](docs/dashboard-idle.svg)
+![Stay Woke dashboard — idle state](docs/dashboard-idle.svg)
 
 *Idle state: daemon offline, no active sessions, sleep available. 💤*
 
 ### Dashboard details
 
-- **Wordmark header** — 4-row half-block pixel banner (`6`/`9` chunky shadow glyphs, `ixine` slanted script), collapses to one line below 30 terminal rows
+- **Wordmark header** — Stay Woke pixel-art wordmark with a tagline, shortened to one line below 30 terminal rows
 
 - **Status chips** — `ACTIVE`/`IDLE` badge, `🚫 SLEEP BLOCKED` / `💤 SLEEP AVAILABLE` indicator
 
@@ -197,7 +195,7 @@ staywoke
 
 - **Split inspector** — select a row to see full details: agent, UUID, PID, held duration, reason, sleep state, lid position, thermal reading
 
-- **Module dash** — auxiliary processes (Ollama, Docker, etc.) in quiet gray, filterable with `a`/`r` keys
+- **Module dash** — auxiliary processes such as Ollama and Docker, filterable with `a`/`r`. The pixel-art penguin appears beneath the list when space is available
 
 - **Keybindings** — `q` quit, `k` kill, `x` purge all, `a` ignore, `r` restore, `↑↓` select, `Enter` inspect
 
@@ -207,13 +205,13 @@ staywoke
 
 ### 🛌 Sleep that follows your work — not the other way around
 
-Most keep-awake tools flip a switch and leave it flipped. 6ix9ine tracks whether work is actually happening and only blocks sleep while sessions are active. When the last session ends, sleep is unblocked automatically — no manual cleanup, no stale assertions.
+Most keep-awake tools flip a switch and leave it flipped. Stay Woke tracks whether work is actually happening and only blocks sleep while sessions are active. When the last session ends, sleep is unblocked automatically — no manual cleanup, no stale assertions.
 
 The daemon's reference counter can handle multiple concurrent sessions from different agents, and process-death watchers guarantee a session can't leak even if a tool crashes without calling release.
 
 ### 🔒 Full clamshell support for docked Macs
 
-When your Mac is docked with the lid closed, macOS normally sleeps immediately. 6ix9ine's privileged helper calls `pmset disablesleep` to keep the system awake — not just the display. This means agent sessions can keep running overnight on a docked Mac without keeping the lid open.
+When your Mac is docked with the lid closed, macOS normally sleeps immediately. Stay Woke's privileged helper calls `pmset disablesleep` to keep the system awake — not just the display. This means agent sessions can keep running overnight on a docked Mac without keeping the lid open.
 
 Lid-close and lid-open events are monitored by the daemon, and a lid-open summary is printed to the dashboard when you open the lid back up.
 
@@ -225,7 +223,7 @@ The module dash monitors auxiliary processes like Ollama and Docker in quiet gra
 
 ### ⚡ Designed to stay out of your way
 
-6ix9ine is a background tool that doesn't ask for attention. The daemon starts silently, hooks install in seconds, the dashboard opens and closes at will. The entire Python dependency footprint is minimal — nothing beyond what's in `requirements.txt`.
+Stay Woke is a background tool that doesn't ask for attention. The daemon starts silently, hooks install in seconds, the dashboard opens and closes at will. The entire Python dependency footprint is minimal — nothing beyond what's in `requirements.txt`.
 
 The install script sets up a private venv, copies only the runtime modules, and never touches your system Python or global site-packages.
 
@@ -257,7 +255,7 @@ This is the whole idea distilled into three layers — each one has one job, and
 
 Agent lifecycle hooks fire session-start and session-end events whenever your tools begin or finish work.
 
-- Claude Code and OpenCode have fully confirmed hook integrations — they fire a 6ix9ine CLI command when a session starts and again when it ends
+- Claude Code and OpenCode have fully confirmed hook integrations — they fire a `staywoke` command when a session starts and again when it ends
 
 - Codex CLI and Antigravity CLI (`agy`) are being researched — their integration points aren't fully mapped yet, but the hook architecture is ready
 
@@ -285,7 +283,7 @@ A minimal root LaunchDaemon is the only component allowed to call IOKit sleep-bl
 
 - Receives `set_sleep_blocked(true|false)` commands via Unix socket
 
-- Authenticates callers by peer PID and owner UID — only the 6ix9ine daemon is allowed to talk to it
+- Authenticates callers by peer PID and owner UID — only the Stay Woke daemon is allowed to talk to it
 
 - Calls `pmset disablesleep` to block or unblock sleep at the OS level
 
@@ -301,7 +299,7 @@ Homebrew's `brew uninstall` only removes the CLI binaries — it has no idea the
 ./scripts/uninstall.sh
 ```
 
-This removes, in order: agent hooks, the background daemon, the privileged helper (prompts for `sudo`), the Homebrew formula and tap, and finally `~/Library/Application Support/6ix9ine` (logs, socket, local state). Pass `--keep-state` if you want to keep that last directory around.
+This removes, in order: agent hooks, the background daemon, the privileged helper (prompts for `sudo`), the Homebrew formula and tap, and finally the Application Support directory for logs, sockets, and local state. Pass `--keep-state` if you want to keep that last directory around.
 
 ---
 
@@ -333,7 +331,7 @@ What's under the hood, by the numbers:
 
 ## 💡 Want Something Added?
 
-[Open an issue →](https://github.com/rjmorales13/6ix9ine/issues/new)
+[Open an issue →](https://github.com/rjmorales13/staywoke/issues/new)
 
 ## 👤 Creator
 
